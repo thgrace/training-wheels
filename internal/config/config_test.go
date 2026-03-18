@@ -18,8 +18,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.General.MaxCommandBytes != 131072 {
 		t.Errorf("MaxCommandBytes = %d, want 131072", cfg.General.MaxCommandBytes)
 	}
-	if len(cfg.Packs.Enabled) != 1 || cfg.Packs.Enabled[0] != "core" {
-		t.Errorf("Packs.Enabled = %v, want [core]", cfg.Packs.Enabled)
+	wantEnabled := []string{"core.git", "core.filesystem", "core.tw"}
+	if runtime.GOOS == "windows" {
+		wantEnabled = append(wantEnabled, "windows")
+	}
+	if !reflect.DeepEqual(cfg.Packs.Enabled, wantEnabled) {
+		t.Errorf("Packs.Enabled = %v, want %v", cfg.Packs.Enabled, wantEnabled)
 	}
 	if len(cfg.Packs.Paths) != 0 {
 		t.Errorf("Packs.Paths = %v, want []", cfg.Packs.Paths)
@@ -215,8 +219,12 @@ func TestLoadFromPath_EmptyJSONObject(t *testing.T) {
 	if cfg.General.MaxCommandBytes != 131072 {
 		t.Errorf("MaxCommandBytes = %d, want 131072 (default)", cfg.General.MaxCommandBytes)
 	}
-	if len(cfg.Packs.Enabled) != 1 || cfg.Packs.Enabled[0] != "core" {
-		t.Errorf("Packs.Enabled = %v, want [core] (default)", cfg.Packs.Enabled)
+	wantEnabled := []string{"core.git", "core.filesystem", "core.tw"}
+	if runtime.GOOS == "windows" {
+		wantEnabled = append(wantEnabled, "windows")
+	}
+	if !reflect.DeepEqual(cfg.Packs.Enabled, wantEnabled) {
+		t.Errorf("Packs.Enabled = %v, want %v (default)", cfg.Packs.Enabled, wantEnabled)
 	}
 	if len(cfg.Packs.Paths) != 0 {
 		t.Errorf("Packs.Paths = %v, want [] (default)", cfg.Packs.Paths)
@@ -325,8 +333,12 @@ func TestLoadFromJSON_PartialPreservesDefaults(t *testing.T) {
 	if cfg.General.MaxCommandBytes != 131072 {
 		t.Errorf("MaxCommandBytes = %d, want 131072 (default preserved)", cfg.General.MaxCommandBytes)
 	}
-	if len(cfg.Packs.Enabled) != 1 || cfg.Packs.Enabled[0] != "core" {
-		t.Errorf("Packs.Enabled = %v, want [core] (default preserved)", cfg.Packs.Enabled)
+	wantEnabled := []string{"core.git", "core.filesystem", "core.tw"}
+	if runtime.GOOS == "windows" {
+		wantEnabled = append(wantEnabled, "windows")
+	}
+	if !reflect.DeepEqual(cfg.Packs.Enabled, wantEnabled) {
+		t.Errorf("Packs.Enabled = %v, want %v (default preserved)", cfg.Packs.Enabled, wantEnabled)
 	}
 	if len(cfg.Packs.Paths) != 0 {
 		t.Errorf("Packs.Paths = %v, want [] (default preserved)", cfg.Packs.Paths)
@@ -398,15 +410,17 @@ func TestDefaultConfig_WindowsPackConditional(t *testing.T) {
 		t.Error("on non-Windows, 'windows' pack should NOT be in default enabled list")
 	}
 
-	// "core" must always be present.
-	hasCore := false
-	for _, p := range cfg.Packs.Enabled {
-		if p == "core" {
-			hasCore = true
-			break
+	wantCoreDefaults := []string{"core.git", "core.filesystem", "core.tw"}
+	for _, want := range wantCoreDefaults {
+		hasPack := false
+		for _, p := range cfg.Packs.Enabled {
+			if p == want {
+				hasPack = true
+				break
+			}
 		}
-	}
-	if !hasCore {
-		t.Error("'core' pack must always be in default enabled list")
+		if !hasPack {
+			t.Errorf("%q must always be in default enabled list", want)
+		}
 	}
 }

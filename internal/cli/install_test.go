@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -117,6 +118,51 @@ func TestDetectAgentsWithFilter(t *testing.T) {
 	names = agentNames(agents)
 	if len(agents) != 1 || names[0] != "claude" {
 		t.Fatalf("got agents %v, want [claude]", names)
+	}
+}
+
+func TestInstallForAgentUsesPathHook(t *testing.T) {
+	for _, a := range allAgents {
+		t.Run(a.Name, func(t *testing.T) {
+			settingsPath := filepath.Join(t.TempDir(), a.UserFile)
+
+			var out bytes.Buffer
+			installForAgent(&out, a, settingsPath, "tw")
+
+			settings, existed := readSettings(settingsPath)
+			if !existed {
+				t.Fatal("settings file was not created")
+			}
+			if !a.HookExists(settings, "tw") {
+				t.Fatal("expected tw hook to be installed")
+			}
+		})
+	}
+}
+
+func TestUninstallForAgentRemovesPathHook(t *testing.T) {
+	for _, a := range allAgents {
+		t.Run(a.Name, func(t *testing.T) {
+			settingsPath := filepath.Join(t.TempDir(), a.UserFile)
+			settings := make(map[string]interface{})
+			a.AddHookEntry(settings, "tw")
+			a.AddHookEntry(settings, "other-tool")
+			writeSettings(settingsPath, settings)
+
+			var out bytes.Buffer
+			uninstallForAgent(&out, a, settingsPath, "tw")
+
+			updated, existed := readSettings(settingsPath)
+			if !existed {
+				t.Fatal("settings file disappeared")
+			}
+			if a.HookExists(updated, "tw") {
+				t.Fatal("expected tw hook to be removed")
+			}
+			if !a.HookExists(updated, "other-tool") {
+				t.Fatal("non-TW hook was removed")
+			}
+		})
 	}
 }
 
