@@ -1,0 +1,17 @@
+version: 1
+
+env:
+  - CGO_ENABLED=0
+
+binary: tw-linux-amd64
+dir: ./cmd/tw
+
+goos: linux
+goarch: amd64
+
+flags:
+  - -trimpath
+
+ldflags:
+  - "-s -w"
+  - "-X github.com/thgrace/training-wheels/internal/cli.Version={{ .Env.VERSION }}"
