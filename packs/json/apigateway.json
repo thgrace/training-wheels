@@ -1,0 +1,607 @@
+{
+  "category": "apigateway",
+  "packs": [
+    {
+      "id": "apigateway.aws",
+      "name": "AWS API Gateway",
+      "description": "Protects against destructive AWS API Gateway CLI operations for both REST APIs and HTTP APIs.",
+      "keywords": [
+        "aws",
+        "apigateway",
+        "apigatewayv2"
+      ],
+      "safe_patterns": [
+        {
+          "name": "apigateway-get-rest-api",
+          "regex": "aws\\s+apigateway\\s+get-rest-api\\b"
+        },
+        {
+          "name": "apigateway-get-rest-apis",
+          "regex": "aws\\s+apigateway\\s+get-rest-apis\\b"
+        },
+        {
+          "name": "apigateway-get-resources",
+          "regex": "aws\\s+apigateway\\s+get-resources\\b"
+        },
+        {
+          "name": "apigateway-get-resource",
+          "regex": "aws\\s+apigateway\\s+get-resource\\b"
+        },
+        {
+          "name": "apigateway-get-method",
+          "regex": "aws\\s+apigateway\\s+get-method\\b"
+        },
+        {
+          "name": "apigateway-get-stages",
+          "regex": "aws\\s+apigateway\\s+get-stages\\b"
+        },
+        {
+          "name": "apigateway-get-stage",
+          "regex": "aws\\s+apigateway\\s+get-stage\\b"
+        },
+        {
+          "name": "apigateway-get-deployments",
+          "regex": "aws\\s+apigateway\\s+get-deployments\\b"
+        },
+        {
+          "name": "apigateway-get-deployment",
+          "regex": "aws\\s+apigateway\\s+get-deployment\\b"
+        },
+        {
+          "name": "apigateway-get-api-keys",
+          "regex": "aws\\s+apigateway\\s+get-api-keys\\b"
+        },
+        {
+          "name": "apigateway-get-api-key",
+          "regex": "aws\\s+apigateway\\s+get-api-key\\b"
+        },
+        {
+          "name": "apigateway-get-authorizers",
+          "regex": "aws\\s+apigateway\\s+get-authorizers\\b"
+        },
+        {
+          "name": "apigateway-get-models",
+          "regex": "aws\\s+apigateway\\s+get-models\\b"
+        },
+        {
+          "name": "apigateway-get-usage-plans",
+          "regex": "aws\\s+apigateway\\s+get-usage-plans\\b"
+        },
+        {
+          "name": "apigateway-get-domain-names",
+          "regex": "aws\\s+apigateway\\s+get-domain-names\\b"
+        },
+        {
+          "name": "apigatewayv2-get-apis",
+          "regex": "aws\\s+apigatewayv2\\s+get-apis\\b"
+        },
+        {
+          "name": "apigatewayv2-get-api",
+          "regex": "aws\\s+apigatewayv2\\s+get-api\\b"
+        },
+        {
+          "name": "apigatewayv2-get-routes",
+          "regex": "aws\\s+apigatewayv2\\s+get-routes\\b"
+        },
+        {
+          "name": "apigatewayv2-get-route",
+          "regex": "aws\\s+apigatewayv2\\s+get-route\\b"
+        },
+        {
+          "name": "apigatewayv2-get-integrations",
+          "regex": "aws\\s+apigatewayv2\\s+get-integrations\\b"
+        },
+        {
+          "name": "apigatewayv2-get-integration",
+          "regex": "aws\\s+apigatewayv2\\s+get-integration\\b"
+        },
+        {
+          "name": "apigatewayv2-get-stages",
+          "regex": "aws\\s+apigatewayv2\\s+get-stages\\b"
+        },
+        {
+          "name": "apigatewayv2-get-stage",
+          "regex": "aws\\s+apigatewayv2\\s+get-stage\\b"
+        },
+        {
+          "name": "apigatewayv2-get-authorizers",
+          "regex": "aws\\s+apigatewayv2\\s+get-authorizers\\b"
+        },
+        {
+          "name": "apigatewayv2-get-domain-names",
+          "regex": "aws\\s+apigatewayv2\\s+get-domain-names\\b"
+        },
+        {
+          "name": "apigateway-help",
+          "regex": "aws\\s+apigateway\\s+(?:help|\\-\\-help)\\b"
+        },
+        {
+          "name": "apigatewayv2-help",
+          "regex": "aws\\s+apigatewayv2\\s+(?:help|\\-\\-help)\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "apigateway-delete-rest-api",
+          "regex": "aws\\s+apigateway\\s+delete-rest-api\\b",
+          "reason": "aws apigateway delete-rest-api permanently removes a REST API and all its resources.",
+          "severity": "critical",
+          "explanation": "Deleting a REST API removes all resources, methods, stages, deployments, and configurations. All clients will immediately receive errors. API keys and usage plans referencing this API become orphaned but are not automatically deleted.\n\nSafer alternatives:\n- aws apigateway get-rest-api: Review API details before deletion\n- aws apigateway get-stages: Check active stages and traffic\n- Export API definition with aws apigateway get-export first"
+        },
+        {
+          "name": "apigateway-delete-resource",
+          "regex": "aws\\s+apigateway\\s+delete-resource\\b",
+          "reason": "aws apigateway delete-resource removes an API resource and its methods.",
+          "severity": "high",
+          "explanation": "Deleting a resource removes the URL path and all HTTP methods defined on it. Clients calling that endpoint will receive 404 errors. Child resources are also deleted recursively.\n\nSafer alternatives:\n- aws apigateway get-resources: Review resource tree first\n- Deploy to a test stage to verify the change\n- Delete individual methods instead if only removing specific operations"
+        },
+        {
+          "name": "apigateway-delete-method",
+          "regex": "aws\\s+apigateway\\s+delete-method\\b",
+          "reason": "aws apigateway delete-method removes an HTTP method from a resource.",
+          "severity": "medium",
+          "explanation": "Deleting a method removes the HTTP operation (GET, POST, etc.) from a resource. Clients calling that method will receive 404 or 405 errors after redeployment.\n\nSafer alternatives:\n- aws apigateway get-method: Review method configuration first\n- Test changes in a non-production stage\n- Consider disabling the method instead of deleting"
+        },
+        {
+          "name": "apigateway-delete-stage",
+          "regex": "aws\\s+apigateway\\s+delete-stage\\b",
+          "reason": "aws apigateway delete-stage removes a deployment stage from an API.",
+          "severity": "high",
+          "explanation": "Deleting a stage stops all traffic to that deployment. Stage variables, caching settings, and throttling configurations are lost. Clients using the stage URL will receive errors immediately.\n\nSafer alternatives:\n- aws apigateway get-stage: Review stage settings first\n- Redirect traffic to another stage before deletion\n- Export stage configuration for backup"
+        },
+        {
+          "name": "apigateway-delete-deployment",
+          "regex": "aws\\s+apigateway\\s+delete-deployment\\b",
+          "reason": "aws apigateway delete-deployment removes a deployment from an API.",
+          "severity": "medium",
+          "explanation": "Deleting a deployment removes a specific API snapshot. If the deployment is currently active on a stage, that stage becomes unavailable. Rollback to this version becomes impossible after deletion.\n\nSafer alternatives:\n- aws apigateway get-deployments: List deployments first\n- Ensure no stages reference this deployment\n- Keep recent deployments for rollback capability"
+        },
+        {
+          "name": "apigateway-delete-api-key",
+          "regex": "aws\\s+apigateway\\s+delete-api-key\\b",
+          "reason": "aws apigateway delete-api-key removes an API key.",
+          "severity": "high",
+          "explanation": "Deleting an API key immediately revokes access for any client using that key. Requests will be rejected with 403 Forbidden. Usage tracking history for the key is preserved but the key cannot be recovered.\n\nSafer alternatives:\n- aws apigateway get-api-key: Review key details first\n- Disable the key instead of deleting to preserve for audit\n- Notify affected clients before deletion"
+        },
+        {
+          "name": "apigateway-delete-authorizer",
+          "regex": "aws\\s+apigateway\\s+delete-authorizer\\b",
+          "reason": "aws apigateway delete-authorizer removes an authorizer from an API.",
+          "severity": "high",
+          "explanation": "Deleting an authorizer breaks authentication for all methods using it. Those methods will fail authorization until reconfigured. Lambda authorizer functions are not deleted but become orphaned.\n\nSafer alternatives:\n- aws apigateway get-authorizers: Review authorizers first\n- Update methods to use a different authorizer before deletion\n- Test in a non-production stage first"
+        },
+        {
+          "name": "apigateway-delete-model",
+          "regex": "aws\\s+apigateway\\s+delete-model\\b",
+          "reason": "aws apigateway delete-model removes a model from an API.",
+          "severity": "medium",
+          "explanation": "Deleting a model removes the JSON schema definition. Methods referencing this model for request/response validation will lose that validation. The API will still function but without schema enforcement.\n\nSafer alternatives:\n- aws apigateway get-models: Review models first\n- Check which methods reference this model\n- Update method configurations to remove model references first"
+        },
+        {
+          "name": "apigateway-delete-domain-name",
+          "regex": "aws\\s+apigateway\\s+delete-domain-name\\b",
+          "reason": "aws apigateway delete-domain-name removes a custom domain name.",
+          "severity": "high",
+          "explanation": "Deleting a custom domain name breaks all traffic using that domain. The ACM certificate is not deleted but becomes unused. DNS records pointing to the domain will fail to resolve API traffic.\n\nSafer alternatives:\n- aws apigateway get-domain-names: Review domains first\n- Update DNS records before domain deletion\n- Verify no production traffic uses this domain"
+        },
+        {
+          "name": "apigateway-delete-usage-plan",
+          "regex": "aws\\s+apigateway\\s+delete-usage-plan\\b",
+          "reason": "aws apigateway delete-usage-plan removes a usage plan.",
+          "severity": "high",
+          "explanation": "Deleting a usage plan removes throttling and quota limits for associated API keys. Keys lose their rate limiting, which may cause backend overload or unexpected billing. Key associations are removed.\n\nSafer alternatives:\n- aws apigateway get-usage-plans: Review plans first\n- aws apigateway get-usage-plan-keys: Check associated keys\n- Migrate keys to another plan before deletion"
+        },
+        {
+          "name": "apigatewayv2-delete-api",
+          "regex": "aws\\s+apigatewayv2\\s+delete-api\\b",
+          "reason": "aws apigatewayv2 delete-api permanently removes an HTTP API.",
+          "severity": "critical",
+          "explanation": "Deleting an HTTP API removes all routes, integrations, stages, and configurations. All clients will immediately lose access. WebSocket connections are terminated. The API ID cannot be reused.\n\nSafer alternatives:\n- aws apigatewayv2 get-api: Review API details first\n- aws apigatewayv2 export-api: Export OpenAPI spec for backup\n- Verify no production traffic before deletion"
+        },
+        {
+          "name": "apigatewayv2-delete-route",
+          "regex": "aws\\s+apigatewayv2\\s+delete-route\\b",
+          "reason": "aws apigatewayv2 delete-route removes a route from an HTTP API.",
+          "severity": "high",
+          "explanation": "Deleting a route removes the path and method combination from the API. Clients calling that endpoint will receive 404 errors. Route authorization settings and request validation are also removed.\n\nSafer alternatives:\n- aws apigatewayv2 get-routes: List routes first\n- Test in $default stage before production\n- Consider updating the route instead of deleting"
+        },
+        {
+          "name": "apigatewayv2-delete-integration",
+          "regex": "aws\\s+apigatewayv2\\s+delete-integration\\b",
+          "reason": "aws apigatewayv2 delete-integration removes an integration from an HTTP API.",
+          "severity": "high",
+          "explanation": "Deleting an integration breaks routes using it. Those routes will fail to invoke backend services. Lambda function configurations, HTTP endpoints, and VPC link settings are lost.\n\nSafer alternatives:\n- aws apigatewayv2 get-integrations: Review integrations first\n- Check which routes use this integration\n- Update routes to use a different integration first"
+        },
+        {
+          "name": "apigatewayv2-delete-stage",
+          "regex": "aws\\s+apigatewayv2\\s+delete-stage\\b",
+          "reason": "aws apigatewayv2 delete-stage removes a stage from an HTTP API.",
+          "severity": "high",
+          "explanation": "Deleting a stage stops all traffic to that deployment. Stage variables, access logs, throttling, and auto-deploy settings are lost. Clients using the stage URL will receive errors.\n\nSafer alternatives:\n- aws apigatewayv2 get-stages: Review stages first\n- Redirect traffic before deletion\n- Keep $default stage for production traffic"
+        },
+        {
+          "name": "apigatewayv2-delete-authorizer",
+          "regex": "aws\\s+apigatewayv2\\s+delete-authorizer\\b",
+          "reason": "aws apigatewayv2 delete-authorizer removes an authorizer from an HTTP API.",
+          "severity": "high",
+          "explanation": "Deleting an authorizer breaks authentication for routes using it. JWT validation and Lambda authorization will fail. Routes must be updated to remove or replace the authorizer reference.\n\nSafer alternatives:\n- aws apigatewayv2 get-authorizers: Review authorizers first\n- Update routes to use a different authorizer\n- Test authorization changes in a test stage"
+        },
+        {
+          "name": "apigatewayv2-delete-domain-name",
+          "regex": "aws\\s+apigatewayv2\\s+delete-domain-name\\b",
+          "reason": "aws apigatewayv2 delete-domain-name removes a custom domain name from an HTTP API.",
+          "severity": "high",
+          "explanation": "Deleting a custom domain breaks traffic using that hostname. API mappings are removed. DNS records will fail to route to the API. The ACM certificate remains but becomes unused.\n\nSafer alternatives:\n- aws apigatewayv2 get-domain-names: Review domains first\n- Update DNS before deletion\n- Remove API mappings first to verify impact"
+        },
+        {
+          "name": "apigatewayv2-delete-route-response",
+          "regex": "aws\\s+apigatewayv2\\s+delete-route-response\\b",
+          "reason": "aws apigatewayv2 delete-route-response removes a route response from an HTTP API.",
+          "severity": "medium",
+          "explanation": "Deleting a route response removes response configuration for WebSocket APIs. Response selection expressions and model mappings are lost. Clients may receive unexpected response formats.\n\nSafer alternatives:\n- aws apigatewayv2 get-route-responses: Review responses first\n- Test in a non-production stage\n- Update response instead of deleting"
+        },
+        {
+          "name": "apigatewayv2-delete-integration-response",
+          "regex": "aws\\s+apigatewayv2\\s+delete-integration-response\\b",
+          "reason": "aws apigatewayv2 delete-integration-response removes an integration response.",
+          "severity": "medium",
+          "explanation": "Deleting an integration response removes response mapping for WebSocket APIs. Template transformations and response codes are lost. Clients may receive raw backend responses.\n\nSafer alternatives:\n- aws apigatewayv2 get-integration-responses: Review first\n- Test response handling in a test stage\n- Update the response instead of deleting"
+        }
+      ]
+    },
+    {
+      "id": "apigateway.kong",
+      "name": "Kong API Gateway",
+      "description": "Protects against destructive Kong Gateway CLI, deck CLI, and Admin API operations.",
+      "keywords": [
+        "kong",
+        "deck",
+        "8001"
+      ],
+      "safe_patterns": [
+        {
+          "name": "kong-version",
+          "regex": "kong\\s+(?:version|--version|-v)\\b"
+        },
+        {
+          "name": "kong-help",
+          "regex": "kong\\s+(?:help|--help|-h)\\b"
+        },
+        {
+          "name": "kong-health",
+          "regex": "kong\\s+health\\b"
+        },
+        {
+          "name": "kong-check",
+          "regex": "kong\\s+check\\b"
+        },
+        {
+          "name": "kong-config-parse",
+          "regex": "kong\\s+config\\s+(?:parse|init)\\b"
+        },
+        {
+          "name": "deck-version",
+          "regex": "deck\\s+(?:version|--version)\\b"
+        },
+        {
+          "name": "deck-help",
+          "regex": "deck\\s+(?:help|--help|-h)\\b"
+        },
+        {
+          "name": "deck-ping",
+          "regex": "deck\\s+ping\\b"
+        },
+        {
+          "name": "deck-dump",
+          "regex": "deck\\s+dump\\b"
+        },
+        {
+          "name": "deck-diff",
+          "regex": "deck\\s+diff\\b"
+        },
+        {
+          "name": "deck-validate",
+          "regex": "deck\\s+validate\\b"
+        },
+        {
+          "name": "deck-convert",
+          "regex": "deck\\s+convert\\b"
+        },
+        {
+          "name": "deck-file",
+          "regex": "deck\\s+file\\b"
+        },
+        {
+          "name": "kong-admin-explicit-get",
+          "regex": "curl\\s+.*(?:-X\\s+GET|--request\\s+GET)\\s+.*(?:localhost|127\\.0\\.0\\.1):8001/"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "deck-reset",
+          "regex": "deck\\s+(?:gateway\\s+)?reset\\b",
+          "reason": "deck reset removes ALL Kong configuration. This is extremely dangerous and irreversible.",
+          "severity": "critical",
+          "explanation": "Resetting Kong removes ALL services, routes, plugins, consumers, certificates, and upstreams. Your entire API gateway configuration is wiped. All traffic through Kong will fail immediately. There is no undo.\n\nSafer alternatives:\n- deck dump: Export current configuration first\n- deck diff: Review what will change before any sync\n- Delete specific entities instead of full reset"
+        },
+        {
+          "name": "deck-sync-destructive",
+          "regex": "deck\\s+(?:gateway\\s+)?sync\\b.*--select-tag\\b",
+          "reason": "deck sync with --select-tag can remove entities not matching the tag.",
+          "severity": "high",
+          "explanation": "Using --select-tag with deck sync removes entities not matching the tag in your state file. This can accidentally delete services and routes managed by other teams or systems. Entities without tags are at risk of deletion.\n\nSafer alternatives:\n- deck diff --select-tag: Preview changes first\n- Use consistent tagging across all entities\n- Consider deck sync without --select-tag to avoid surprises"
+        },
+        {
+          "name": "kong-admin-delete-services",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/services|(?:localhost|127\\.0\\.0\\.1):8001/services.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes services.",
+          "severity": "high",
+          "explanation": "Deleting a Kong service removes the upstream service definition. All routes associated with the service become orphaned and stop working. Traffic to those endpoints will return 404 errors.\n\nSafer alternatives:\n- GET /services first: List services to verify the target\n- Delete routes pointing to the service first\n- Use deck dump to export configuration before changes"
+        },
+        {
+          "name": "kong-admin-delete-routes",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/routes|(?:localhost|127\\.0\\.0\\.1):8001/routes.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes routes.",
+          "severity": "high",
+          "explanation": "Deleting a Kong route removes the path-to-service mapping. Requests to that path will return 404 errors. Plugins attached to the route are also removed. The associated service is not affected.\n\nSafer alternatives:\n- GET /routes first: Verify the route details\n- Test in a non-production environment\n- Consider disabling plugins instead of deleting the route"
+        },
+        {
+          "name": "kong-admin-delete-plugins",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/plugins|(?:localhost|127\\.0\\.0\\.1):8001/plugins.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes plugins.",
+          "severity": "medium",
+          "explanation": "Deleting a Kong plugin removes its functionality from the associated service, route, or consumer. Authentication, rate limiting, logging, or transformation features provided by the plugin stop immediately.\n\nSafer alternatives:\n- GET /plugins first: Review plugin configuration\n- PATCH to disable the plugin instead of deleting\n- Export plugin config with deck dump before deletion"
+        },
+        {
+          "name": "kong-admin-delete-consumers",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/consumers|(?:localhost|127\\.0\\.0\\.1):8001/consumers.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes consumers.",
+          "severity": "high",
+          "explanation": "Deleting a Kong consumer removes the API client identity. All credentials (API keys, JWT, OAuth) for that consumer are revoked. Plugins configured per-consumer stop applying. Affected clients lose API access.\n\nSafer alternatives:\n- GET /consumers first: Review consumer details\n- Delete individual credentials instead of the consumer\n- Notify affected clients before deletion"
+        },
+        {
+          "name": "kong-admin-delete-upstreams",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/upstreams|(?:localhost|127\\.0\\.0\\.1):8001/upstreams.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes upstreams.",
+          "severity": "high",
+          "explanation": "Deleting a Kong upstream removes the load balancer and all its targets. Services using this upstream will fail to route traffic. Health checks and circuit breaker settings are lost.\n\nSafer alternatives:\n- GET /upstreams first: Review upstream configuration\n- Update services to use a different upstream first\n- Remove targets individually to verify impact"
+        },
+        {
+          "name": "kong-admin-delete-targets",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/.*targets|(?:localhost|127\\.0\\.0\\.1):8001/.*targets.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes targets.",
+          "severity": "medium",
+          "explanation": "Deleting a Kong target removes a backend server from the upstream pool. Traffic is redistributed to remaining targets. If this was the last target, the upstream has no backends and requests fail.\n\nSafer alternatives:\n- GET /upstreams/{id}/targets first: List current targets\n- Set target weight to 0 to drain traffic first\n- Verify other targets can handle the load"
+        },
+        {
+          "name": "kong-admin-delete-certificates",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/certificates|(?:localhost|127\\.0\\.0\\.1):8001/certificates.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes certificates.",
+          "severity": "high",
+          "explanation": "Deleting a Kong certificate removes the TLS/SSL certificate. SNIs using this certificate will fail TLS handshakes. HTTPS traffic to affected domains will receive certificate errors.\n\nSafer alternatives:\n- GET /certificates first: Review certificate details\n- Upload a replacement certificate before deletion\n- Remove associated SNIs first"
+        },
+        {
+          "name": "kong-admin-delete-snis",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/snis|(?:localhost|127\\.0\\.0\\.1):8001/snis.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API removes SNIs.",
+          "severity": "high",
+          "explanation": "Deleting a Kong SNI removes the domain-to-certificate mapping. HTTPS requests for that hostname will fail TLS negotiation or use a default certificate if configured. Clients will see certificate warnings.\n\nSafer alternatives:\n- GET /snis first: Review SNI configuration\n- Update the SNI to point to a different certificate\n- Verify the certificate is no longer needed for this domain"
+        },
+        {
+          "name": "kong-admin-delete-generic",
+          "regex": "curl\\s+.*(?:(?:-X\\s+DELETE|--request\\s+DELETE).*(?:localhost|127\\.0\\.0\\.1):8001/|(?:localhost|127\\.0\\.0\\.1):8001/.*(?:-X\\s+DELETE|--request\\s+DELETE))",
+          "reason": "DELETE request to Kong Admin API can remove configuration.",
+          "severity": "medium",
+          "explanation": "DELETE requests to the Kong Admin API remove configuration objects. The specific impact depends on the endpoint: services, routes, plugins, consumers, certificates, or other Kong entities. Deletions take effect immediately.\n\nSafer alternatives:\n- Use GET requests first to review the resource\n- Export configuration with deck dump\n- Test changes in a staging environment"
+        }
+      ]
+    },
+    {
+      "id": "apigateway.apigee",
+      "name": "Google Apigee",
+      "description": "Protects against destructive Google Apigee CLI and apigeecli operations.",
+      "keywords": [
+        "apigee",
+        "apigeecli"
+      ],
+      "safe_patterns": [
+        {
+          "name": "gcloud-apigee-apis-list",
+          "regex": "gcloud\\s+apigee\\s+apis\\s+list\\b"
+        },
+        {
+          "name": "gcloud-apigee-apis-describe",
+          "regex": "gcloud\\s+apigee\\s+apis\\s+describe\\b"
+        },
+        {
+          "name": "gcloud-apigee-environments-list",
+          "regex": "gcloud\\s+apigee\\s+environments\\s+list\\b"
+        },
+        {
+          "name": "gcloud-apigee-environments-describe",
+          "regex": "gcloud\\s+apigee\\s+environments\\s+describe\\b"
+        },
+        {
+          "name": "gcloud-apigee-developers-list",
+          "regex": "gcloud\\s+apigee\\s+developers\\s+list\\b"
+        },
+        {
+          "name": "gcloud-apigee-developers-describe",
+          "regex": "gcloud\\s+apigee\\s+developers\\s+describe\\b"
+        },
+        {
+          "name": "gcloud-apigee-products-list",
+          "regex": "gcloud\\s+apigee\\s+products\\s+list\\b"
+        },
+        {
+          "name": "gcloud-apigee-products-describe",
+          "regex": "gcloud\\s+apigee\\s+products\\s+describe\\b"
+        },
+        {
+          "name": "gcloud-apigee-organizations-list",
+          "regex": "gcloud\\s+apigee\\s+organizations\\s+list\\b"
+        },
+        {
+          "name": "gcloud-apigee-organizations-describe",
+          "regex": "gcloud\\s+apigee\\s+organizations\\s+describe\\b"
+        },
+        {
+          "name": "gcloud-apigee-deployments-list",
+          "regex": "gcloud\\s+apigee\\s+deployments\\s+list\\b"
+        },
+        {
+          "name": "gcloud-apigee-deployments-describe",
+          "regex": "gcloud\\s+apigee\\s+deployments\\s+describe\\b"
+        },
+        {
+          "name": "apigeecli-apis-list",
+          "regex": "apigeecli\\s+apis\\s+list\\b"
+        },
+        {
+          "name": "apigeecli-apis-get",
+          "regex": "apigeecli\\s+apis\\s+get\\b"
+        },
+        {
+          "name": "apigeecli-products-list",
+          "regex": "apigeecli\\s+products\\s+list\\b"
+        },
+        {
+          "name": "apigeecli-products-get",
+          "regex": "apigeecli\\s+products\\s+get\\b"
+        },
+        {
+          "name": "apigeecli-developers-list",
+          "regex": "apigeecli\\s+developers\\s+list\\b"
+        },
+        {
+          "name": "apigeecli-developers-get",
+          "regex": "apigeecli\\s+developers\\s+get\\b"
+        },
+        {
+          "name": "apigeecli-envs-list",
+          "regex": "apigeecli\\s+envs\\s+list\\b"
+        },
+        {
+          "name": "apigeecli-envs-get",
+          "regex": "apigeecli\\s+envs\\s+get\\b"
+        },
+        {
+          "name": "apigeecli-orgs-list",
+          "regex": "apigeecli\\s+orgs\\s+list\\b"
+        },
+        {
+          "name": "apigeecli-orgs-get",
+          "regex": "apigeecli\\s+orgs\\s+get\\b"
+        },
+        {
+          "name": "gcloud-apigee-help",
+          "regex": "gcloud\\s+apigee\\s+(?:--help|-h|help)\\b"
+        },
+        {
+          "name": "apigeecli-help",
+          "regex": "apigeecli\\s+(?:--help|-h|help|version)\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "gcloud-apigee-apis-delete",
+          "regex": "gcloud\\s+apigee\\s+apis\\s+delete\\b",
+          "reason": "gcloud apigee apis delete removes an API proxy from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting an API proxy removes all its revisions and deployment history. Any applications relying on this API will immediately receive errors. API keys and quotas associated with products referencing this API may be affected.\n\nSafer alternatives:\n- gcloud apigee apis list: Review APIs before deletion\n- gcloud apigee deployments undeploy: Undeploy first to verify impact\n- Export the API proxy bundle before deletion for backup"
+        },
+        {
+          "name": "gcloud-apigee-environments-delete",
+          "regex": "gcloud\\s+apigee\\s+environments\\s+delete\\b",
+          "reason": "gcloud apigee environments delete removes an Apigee environment.",
+          "severity": "critical",
+          "explanation": "Deleting an environment removes all deployed API proxies, target servers, key-value maps, and caches within it. This is irreversible and will break all API traffic routed through this environment.\n\nSafer alternatives:\n- gcloud apigee environments describe: Review environment contents\n- Undeploy all APIs from the environment first\n- Export environment configuration and resources before deletion"
+        },
+        {
+          "name": "gcloud-apigee-developers-delete",
+          "regex": "gcloud\\s+apigee\\s+developers\\s+delete\\b",
+          "reason": "gcloud apigee developers delete removes a developer from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting a developer also deletes all their apps and associated API keys. Any applications using those keys will immediately lose API access. Developer analytics and usage history are also removed.\n\nSafer alternatives:\n- gcloud apigee developers describe: Review developer details\n- Revoke individual app credentials instead of deleting the developer\n- Set developer status to inactive rather than deleting"
+        },
+        {
+          "name": "gcloud-apigee-products-delete",
+          "regex": "gcloud\\s+apigee\\s+products\\s+delete\\b",
+          "reason": "gcloud apigee products delete removes an API product from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting an API product immediately revokes access for all apps subscribed to it. Quota settings, rate limits, and access controls defined in the product are lost. Apps will need to be re-subscribed to a different product.\n\nSafer alternatives:\n- gcloud apigee products describe: Review product configuration\n- Remove individual apps from the product instead\n- Set product access to private before deletion to verify impact"
+        },
+        {
+          "name": "gcloud-apigee-organizations-delete",
+          "regex": "gcloud\\s+apigee\\s+organizations\\s+delete\\b",
+          "reason": "gcloud apigee organizations delete removes an entire Apigee organization.",
+          "severity": "critical",
+          "explanation": "Deleting an organization permanently removes ALL environments, API proxies, products, developers, apps, and analytics data. This is irreversible and will completely destroy your API management infrastructure.\n\nSafer alternatives:\n- Export all configurations and proxy bundles before deletion\n- Delete individual resources to verify nothing is still in use\n- Consider disabling billing instead if just reducing costs"
+        },
+        {
+          "name": "gcloud-apigee-deployments-undeploy",
+          "regex": "gcloud\\s+apigee\\s+deployments\\s+undeploy\\b",
+          "reason": "gcloud apigee deployments undeploy removes an API deployment.",
+          "severity": "medium",
+          "explanation": "Undeploying an API proxy stops all traffic processing for that API in the specified environment. Clients will receive errors until the API is redeployed. This is reversible by redeploying the proxy.\n\nSafer alternatives:\n- gcloud apigee deployments list: Review current deployments\n- Test in a non-production environment first\n- Deploy a new revision instead of undeploying"
+        },
+        {
+          "name": "apigeecli-apis-delete",
+          "regex": "apigeecli\\s+apis\\s+delete\\b",
+          "reason": "apigeecli apis delete removes an API proxy from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting an API proxy removes all its revisions and deployment history. Any applications relying on this API will immediately receive errors.\n\nSafer alternatives:\n- apigeecli apis list: Review APIs before deletion\n- apigeecli apis export: Export the proxy bundle for backup\n- Undeploy from all environments first to verify impact"
+        },
+        {
+          "name": "apigeecli-products-delete",
+          "regex": "apigeecli\\s+products\\s+delete\\b",
+          "reason": "apigeecli products delete removes an API product from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting an API product immediately revokes access for all subscribed apps. Quota settings and rate limits are permanently lost.\n\nSafer alternatives:\n- apigeecli products list: Review products before deletion\n- apigeecli products get: Check which apps are using the product\n- Remove apps from the product first to verify impact"
+        },
+        {
+          "name": "apigeecli-developers-delete",
+          "regex": "apigeecli\\s+developers\\s+delete\\b",
+          "reason": "apigeecli developers delete removes a developer from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting a developer also deletes all their apps and API keys. Applications using those keys will immediately lose access.\n\nSafer alternatives:\n- apigeecli developers list: Review developers before deletion\n- apigeecli apps list: Check developer's apps first\n- Set developer status to inactive instead of deleting"
+        },
+        {
+          "name": "apigeecli-envs-delete",
+          "regex": "apigeecli\\s+envs\\s+delete\\b",
+          "reason": "apigeecli envs delete removes an Apigee environment.",
+          "severity": "critical",
+          "explanation": "Deleting an environment removes all deployed proxies, target servers, and configurations. This breaks all API traffic through that environment.\n\nSafer alternatives:\n- apigeecli envs list: Review environments before deletion\n- Export all environment resources before deletion\n- Undeploy all APIs first to verify nothing is in use"
+        },
+        {
+          "name": "apigeecli-orgs-delete",
+          "regex": "apigeecli\\s+orgs\\s+delete\\b",
+          "reason": "apigeecli orgs delete removes an entire Apigee organization.",
+          "severity": "critical",
+          "explanation": "Deleting an organization permanently removes ALL resources: environments, APIs, products, developers, apps, and analytics. This is completely irreversible.\n\nSafer alternatives:\n- Export all configurations before deletion\n- Delete individual resources first to verify impact\n- Contact support if you need to preserve any data"
+        },
+        {
+          "name": "apigeecli-apps-delete",
+          "regex": "apigeecli\\s+apps\\s+delete\\b",
+          "reason": "apigeecli apps delete removes a developer app from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting an app revokes all its API keys and credentials. Any systems using those keys will immediately lose API access.\n\nSafer alternatives:\n- apigeecli apps list: Review apps before deletion\n- Revoke individual credentials instead of deleting the app\n- Set app status to revoked to disable without deleting"
+        },
+        {
+          "name": "apigeecli-keyvaluemaps-delete",
+          "regex": "apigeecli\\s+keyvaluemaps\\s+delete\\b",
+          "reason": "apigeecli keyvaluemaps delete removes a key-value map from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting a KVM removes all stored key-value pairs. API proxies reading from this KVM will fail or return errors. Configuration data stored in the KVM is permanently lost.\n\nSafer alternatives:\n- apigeecli keyvaluemaps list: Review KVMs before deletion\n- Export KVM entries before deletion\n- Check which proxies reference this KVM first"
+        },
+        {
+          "name": "apigeecli-targetservers-delete",
+          "regex": "apigeecli\\s+targetservers\\s+delete\\b",
+          "reason": "apigeecli targetservers delete removes a target server from Apigee.",
+          "severity": "high",
+          "explanation": "Deleting a target server breaks all API proxies that route traffic to it. Requests will fail until proxies are updated to use a different target.\n\nSafer alternatives:\n- apigeecli targetservers list: Review targets before deletion\n- Update API proxies to use a different target first\n- Set the target server to disabled to test impact"
+        }
+      ]
+    }
+  ]
+}

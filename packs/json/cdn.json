@@ -1,0 +1,375 @@
+{
+  "category": "cdn",
+  "packs": [
+    {
+      "id": "cdn.cloudflare_workers",
+      "name": "Cloudflare Workers",
+      "description": "Protects against destructive Cloudflare Workers, KV, R2, and D1 operations via the Wrangler CLI.",
+      "keywords": [
+        "wrangler"
+      ],
+      "safe_patterns": [
+        {
+          "name": "wrangler-whoami",
+          "regex": "wrangler\\s+whoami\\b"
+        },
+        {
+          "name": "wrangler-kv-get",
+          "regex": "wrangler\\s+kv:key\\s+get\\b"
+        },
+        {
+          "name": "wrangler-kv-list",
+          "regex": "wrangler\\s+kv:key\\s+list\\b"
+        },
+        {
+          "name": "wrangler-kv-namespace-list",
+          "regex": "wrangler\\s+kv:namespace\\s+list\\b"
+        },
+        {
+          "name": "wrangler-r2-object-get",
+          "regex": "wrangler\\s+r2\\s+object\\s+get\\b"
+        },
+        {
+          "name": "wrangler-r2-bucket-list",
+          "regex": "wrangler\\s+r2\\s+bucket\\s+list\\b"
+        },
+        {
+          "name": "wrangler-d1-list",
+          "regex": "wrangler\\s+d1\\s+list\\b"
+        },
+        {
+          "name": "wrangler-d1-info",
+          "regex": "wrangler\\s+d1\\s+info\\b"
+        },
+        {
+          "name": "wrangler-dev",
+          "regex": "wrangler\\s+dev\\b"
+        },
+        {
+          "name": "wrangler-tail",
+          "regex": "wrangler\\s+tail\\b"
+        },
+        {
+          "name": "wrangler-version",
+          "regex": "wrangler\\s+(?:-v|--version|version)\\b"
+        },
+        {
+          "name": "wrangler-help",
+          "regex": "wrangler\\s+(?:-h|--help|help)\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "wrangler-delete",
+          "regex": "wrangler\\s+delete\\b",
+          "reason": "wrangler delete removes a Worker from Cloudflare.",
+          "severity": "critical",
+          "explanation": "Deleting a Cloudflare Worker immediately stops all edge processing for that Worker. Any routes pointing to it will return errors. Custom domains and bindings (KV, R2, D1) associated with the Worker remain but become orphaned.\n\nSafer alternatives:\n- wrangler deployments list: Review deployment history first\n- Disable routes instead of deleting the Worker\n- Use wrangler tail to verify traffic before deletion"
+        },
+        {
+          "name": "wrangler-deployments-rollback",
+          "regex": "wrangler\\s+deployments\\s+rollback\\b",
+          "reason": "wrangler deployments rollback reverts to a previous Worker version.",
+          "severity": "high",
+          "explanation": "Rolling back a deployment replaces your current Worker code with a previous version. This can reintroduce bugs, break API compatibility, or cause issues if the previous version relies on removed bindings or environment variables.\n\nSafer alternatives:\n- wrangler deployments list: Review available versions first\n- Test the target version in a staging environment\n- Deploy a fix forward instead of rolling back"
+        },
+        {
+          "name": "wrangler-kv-key-delete",
+          "regex": "wrangler\\s+kv:key\\s+delete\\b",
+          "reason": "wrangler kv:key delete removes a key from KV storage.",
+          "severity": "medium",
+          "explanation": "Deleting a KV key immediately removes the data at all edge locations. Applications reading this key will receive null or errors. KV deletions propagate globally within seconds.\n\nSafer alternatives:\n- wrangler kv:key get: Retrieve and backup the value first\n- Set an expiration instead of deleting for temporary data\n- Use KV namespaces for environment separation"
+        },
+        {
+          "name": "wrangler-kv-namespace-delete",
+          "regex": "wrangler\\s+kv:namespace\\s+delete\\b",
+          "reason": "wrangler kv:namespace delete removes an entire KV namespace.",
+          "severity": "critical",
+          "explanation": "Deleting a KV namespace permanently removes ALL keys and values within it. Any Workers bound to this namespace will fail when accessing KV. This cannot be undone and all data is lost.\n\nSafer alternatives:\n- wrangler kv:key list: Inventory all keys first\n- Export data before deletion\n- Remove Worker bindings before deleting the namespace"
+        },
+        {
+          "name": "wrangler-kv-bulk-delete",
+          "regex": "wrangler\\s+kv:bulk\\s+delete\\b",
+          "reason": "wrangler kv:bulk delete removes multiple keys from KV storage.",
+          "severity": "high",
+          "explanation": "Bulk delete removes many KV keys at once based on a JSON file. This is efficient but dangerous - a malformed keys file can delete unintended data. All deletions are immediate and irreversible.\n\nSafer alternatives:\n- Review the keys JSON file carefully before execution\n- Test with a single wrangler kv:key delete first\n- Back up affected keys before bulk deletion"
+        },
+        {
+          "name": "wrangler-r2-object-delete",
+          "regex": "wrangler\\s+r2\\s+object\\s+delete\\b",
+          "reason": "wrangler r2 object delete removes an object from R2 storage.",
+          "severity": "medium",
+          "explanation": "Deleting an R2 object permanently removes the file from storage. Any URLs or Workers accessing this object will receive 404 errors. Unlike S3, R2 does not charge for delete operations but data is unrecoverable.\n\nSafer alternatives:\n- wrangler r2 object get: Download the object first\n- Use object lifecycle rules for automatic expiration\n- Move to a separate 'archive' bucket instead of deleting"
+        },
+        {
+          "name": "wrangler-r2-bucket-delete",
+          "regex": "wrangler\\s+r2\\s+bucket\\s+delete\\b",
+          "reason": "wrangler r2 bucket delete removes an entire R2 bucket.",
+          "severity": "critical",
+          "explanation": "Deleting an R2 bucket removes the bucket and ALL objects within it. Workers bound to this bucket will fail. The bucket name becomes available for reuse by any Cloudflare account.\n\nSafer alternatives:\n- wrangler r2 bucket list: Verify the bucket contents\n- Empty the bucket and verify it's truly unused\n- Remove Worker bindings before bucket deletion"
+        },
+        {
+          "name": "wrangler-d1-delete",
+          "regex": "wrangler\\s+d1\\s+delete\\b",
+          "reason": "wrangler d1 delete removes a D1 database.",
+          "severity": "critical",
+          "explanation": "Deleting a D1 database permanently removes all tables, data, and schema. Workers bound to this database will fail with binding errors. D1 databases cannot be recovered after deletion.\n\nSafer alternatives:\n- wrangler d1 export: Export the database first\n- wrangler d1 info: Review database details\n- Remove Worker bindings before deletion"
+        }
+      ]
+    },
+    {
+      "id": "cdn.fastly",
+      "name": "Fastly CDN",
+      "description": "Protects against destructive Fastly CLI operations like service, domain, backend, and VCL deletion.",
+      "keywords": [
+        "fastly"
+      ],
+      "safe_patterns": [
+        {
+          "name": "fastly-service-list",
+          "regex": "fastly\\s+service\\s+list\\b"
+        },
+        {
+          "name": "fastly-service-describe",
+          "regex": "fastly\\s+service\\s+describe\\b"
+        },
+        {
+          "name": "fastly-service-search",
+          "regex": "fastly\\s+service\\s+search\\b"
+        },
+        {
+          "name": "fastly-domain-list",
+          "regex": "fastly\\s+domain\\s+list\\b"
+        },
+        {
+          "name": "fastly-domain-describe",
+          "regex": "fastly\\s+domain\\s+describe\\b"
+        },
+        {
+          "name": "fastly-backend-list",
+          "regex": "fastly\\s+backend\\s+list\\b"
+        },
+        {
+          "name": "fastly-backend-describe",
+          "regex": "fastly\\s+backend\\s+describe\\b"
+        },
+        {
+          "name": "fastly-vcl-list",
+          "regex": "fastly\\s+vcl\\s+list\\b"
+        },
+        {
+          "name": "fastly-vcl-describe",
+          "regex": "fastly\\s+vcl\\s+describe\\b"
+        },
+        {
+          "name": "fastly-version-list",
+          "regex": "fastly\\s+version\\s+list\\b"
+        },
+        {
+          "name": "fastly-whoami",
+          "regex": "fastly\\s+whoami\\b"
+        },
+        {
+          "name": "fastly-profile",
+          "regex": "fastly\\s+profile\\b"
+        },
+        {
+          "name": "fastly-version",
+          "regex": "fastly\\s+(?:-v|--version|version)\\b"
+        },
+        {
+          "name": "fastly-help",
+          "regex": "fastly\\s+(?:-h|--help|help)\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "fastly-service-delete",
+          "regex": "fastly\\s+service\\s+delete\\b",
+          "reason": "fastly service delete removes a Fastly service entirely.",
+          "severity": "critical",
+          "explanation": "Deleting a Fastly service removes ALL associated domains, backends, VCL, dictionaries, ACLs, and logging configurations. All traffic to this service will immediately fail. Service IDs cannot be reused after deletion.\n\nSafer alternatives:\n- fastly service describe: Review service configuration first\n- Export VCL and configuration for backup\n- Remove domains before deleting to confirm no active traffic"
+        },
+        {
+          "name": "fastly-domain-delete",
+          "regex": "fastly\\s+domain\\s+delete\\b",
+          "reason": "fastly domain delete removes a domain from a service.",
+          "severity": "high",
+          "explanation": "Removing a domain from a Fastly service immediately stops CDN handling for that domain. Traffic will either fail or fall back to the origin directly, bypassing caching and edge features.\n\nSafer alternatives:\n- fastly domain list: Review all domains on the service\n- Update DNS before removing from Fastly\n- Test with a staging domain first"
+        },
+        {
+          "name": "fastly-backend-delete",
+          "regex": "fastly\\s+backend\\s+delete\\b",
+          "reason": "fastly backend delete removes a backend origin server.",
+          "severity": "high",
+          "explanation": "Deleting a backend removes an origin server from the service. If VCL or routing rules reference this backend, requests will fail with 503 errors. Health checks and shield configuration are also removed.\n\nSafer alternatives:\n- fastly backend describe: Review backend configuration\n- Update VCL to stop routing to this backend first\n- Add replacement backend before removing the old one"
+        },
+        {
+          "name": "fastly-vcl-delete",
+          "regex": "fastly\\s+vcl\\s+delete\\b",
+          "reason": "fastly vcl delete removes VCL configuration.",
+          "severity": "high",
+          "explanation": "Deleting VCL removes custom edge logic including routing, caching rules, header manipulation, and security policies. The service may fall back to default behavior or fail if the deleted VCL was the main configuration.\n\nSafer alternatives:\n- fastly vcl describe: Download VCL content first\n- Keep VCL in version control\n- Create new version before deleting from old"
+        },
+        {
+          "name": "fastly-dictionary-delete",
+          "regex": "fastly\\s+dictionary\\s+delete\\b",
+          "reason": "fastly dictionary delete removes an edge dictionary.",
+          "severity": "high",
+          "explanation": "Deleting an edge dictionary removes key-value configuration data used by VCL. If VCL references this dictionary for routing, feature flags, or blocklists, those lookups will fail causing request errors.\n\nSafer alternatives:\n- fastly dictionary-item list: Export dictionary contents\n- Update VCL to remove dictionary references first\n- Create replacement dictionary before deleting"
+        },
+        {
+          "name": "fastly-dictionary-item-delete",
+          "regex": "fastly\\s+dictionary-item\\s+delete\\b",
+          "reason": "fastly dictionary-item delete removes dictionary entries.",
+          "severity": "medium",
+          "explanation": "Deleting dictionary items removes edge configuration values. VCL lookups for deleted keys will return empty strings, potentially affecting routing, redirects, or feature flag logic.\n\nSafer alternatives:\n- Review which VCL snippets use this dictionary\n- Set values to empty instead of deleting if VCL expects the key\n- Back up dictionary contents before modifications"
+        },
+        {
+          "name": "fastly-acl-delete",
+          "regex": "fastly\\s+acl\\s+delete\\b",
+          "reason": "fastly acl delete removes an access control list.",
+          "severity": "high",
+          "explanation": "Deleting an ACL removes IP allowlist or blocklist configuration. Security rules referencing this ACL will no longer match, potentially exposing protected resources or breaking geo-restriction logic.\n\nSafer alternatives:\n- fastly acl-entry list: Export ACL entries first\n- Update VCL to remove ACL references\n- Create replacement ACL before deleting"
+        },
+        {
+          "name": "fastly-acl-entry-delete",
+          "regex": "fastly\\s+acl-entry\\s+delete\\b",
+          "reason": "fastly acl-entry delete removes ACL entries.",
+          "severity": "medium",
+          "explanation": "Removing ACL entries changes IP matching behavior. Removing an IP from a blocklist allows that IP to access the service. Removing from an allowlist blocks that IP.\n\nSafer alternatives:\n- Review the ACL purpose (allow vs block list)\n- Verify the entry change with the security team\n- Document why the entry is being removed"
+        },
+        {
+          "name": "fastly-logging-delete",
+          "regex": "fastly\\s+logging\\s+\\S+\\s+delete\\b",
+          "reason": "fastly logging delete removes logging endpoints.",
+          "severity": "high",
+          "explanation": "Deleting a logging endpoint stops log delivery to that destination. You will lose visibility into edge traffic, errors, and security events. Compliance and debugging capabilities are affected.\n\nSafer alternatives:\n- Ensure alternative logging is configured\n- Export endpoint configuration for backup\n- Disable endpoint before full deletion"
+        },
+        {
+          "name": "fastly-version-activate",
+          "regex": "fastly\\s+service\\s+version\\s+activate\\b",
+          "reason": "fastly service version activate can cause service disruption if misconfigured.",
+          "severity": "high",
+          "explanation": "Activating a service version immediately deploys that configuration to all edge nodes. Misconfigured VCL, missing backends, or broken routing rules will cause immediate outages affecting all traffic.\n\nSafer alternatives:\n- fastly vcl validate: Validate VCL syntax first\n- Use fastly diff to compare with current active version\n- Test in a staging service before production activation"
+        },
+        {
+          "name": "fastly-compute-delete",
+          "regex": "fastly\\s+compute\\s+delete\\b",
+          "reason": "fastly compute delete removes compute package.",
+          "severity": "critical",
+          "explanation": "Deleting a Compute@Edge package removes your WASM application from the service. All serverless edge compute functionality stops immediately. The package must be rebuilt and redeployed to restore functionality.\n\nSafer alternatives:\n- Keep package source in version control\n- Deploy replacement package before deleting\n- Use fastly compute describe to review current state"
+        }
+      ]
+    },
+    {
+      "id": "cdn.cloudfront",
+      "name": "AWS CloudFront",
+      "description": "Protects against destructive AWS CloudFront operations like deleting distributions, cache policies, and functions.",
+      "keywords": [
+        "cloudfront"
+      ],
+      "safe_patterns": [
+        {
+          "name": "cloudfront-list-distributions",
+          "regex": "aws\\s+cloudfront\\s+list-distributions\\b"
+        },
+        {
+          "name": "cloudfront-list-cache-policies",
+          "regex": "aws\\s+cloudfront\\s+list-cache-policies\\b"
+        },
+        {
+          "name": "cloudfront-list-origin-request-policies",
+          "regex": "aws\\s+cloudfront\\s+list-origin-request-policies\\b"
+        },
+        {
+          "name": "cloudfront-list-functions",
+          "regex": "aws\\s+cloudfront\\s+list-functions\\b"
+        },
+        {
+          "name": "cloudfront-list-invalidations",
+          "regex": "aws\\s+cloudfront\\s+list-invalidations\\b"
+        },
+        {
+          "name": "cloudfront-get-distribution",
+          "regex": "aws\\s+cloudfront\\s+get-distribution\\b"
+        },
+        {
+          "name": "cloudfront-get-distribution-config",
+          "regex": "aws\\s+cloudfront\\s+get-distribution-config\\b"
+        },
+        {
+          "name": "cloudfront-get-cache-policy",
+          "regex": "aws\\s+cloudfront\\s+get-cache-policy\\b"
+        },
+        {
+          "name": "cloudfront-get-origin-request-policy",
+          "regex": "aws\\s+cloudfront\\s+get-origin-request-policy\\b"
+        },
+        {
+          "name": "cloudfront-get-function",
+          "regex": "aws\\s+cloudfront\\s+get-function\\b"
+        },
+        {
+          "name": "cloudfront-get-invalidation",
+          "regex": "aws\\s+cloudfront\\s+get-invalidation\\b"
+        },
+        {
+          "name": "cloudfront-describe-function",
+          "regex": "aws\\s+cloudfront\\s+describe-function\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "cloudfront-delete-distribution",
+          "regex": "aws\\s+cloudfront\\s+delete-distribution\\b",
+          "reason": "aws cloudfront delete-distribution removes a CloudFront distribution.",
+          "severity": "critical",
+          "explanation": "Deleting a CloudFront distribution removes your CDN endpoint. All traffic to the distribution URL will fail. You must first disable the distribution and wait for propagation. Associated origins, behaviors, and cache settings are lost.\n\nSafer alternatives:\n- aws cloudfront get-distribution: Review configuration first\n- Disable the distribution before deleting\n- Export the distribution config for backup"
+        },
+        {
+          "name": "cloudfront-delete-cache-policy",
+          "regex": "aws\\s+cloudfront\\s+delete-cache-policy\\b",
+          "reason": "aws cloudfront delete-cache-policy removes a cache policy.",
+          "severity": "high",
+          "explanation": "Deleting a cache policy fails if any distribution behaviors reference it. If deletion succeeds, any caching optimizations you configured are lost. Custom TTLs, cache keys, and compression settings must be recreated.\n\nSafer alternatives:\n- aws cloudfront get-cache-policy: Review policy settings first\n- Check which distributions use this policy\n- Create a replacement policy before deleting"
+        },
+        {
+          "name": "cloudfront-delete-origin-request-policy",
+          "regex": "aws\\s+cloudfront\\s+delete-origin-request-policy\\b",
+          "reason": "aws cloudfront delete-origin-request-policy removes an origin request policy.",
+          "severity": "high",
+          "explanation": "Deleting an origin request policy removes header, query string, and cookie forwarding configuration. Origins may receive different requests than expected, potentially breaking authentication or content negotiation.\n\nSafer alternatives:\n- aws cloudfront get-origin-request-policy: Review settings first\n- Verify no distributions reference this policy\n- Create replacement before deletion"
+        },
+        {
+          "name": "cloudfront-delete-function",
+          "regex": "aws\\s+cloudfront\\s+delete-function\\b",
+          "reason": "aws cloudfront delete-function removes a CloudFront function.",
+          "severity": "high",
+          "explanation": "Deleting a CloudFront Function removes edge compute logic. Any distributions using this function will lose URL rewriting, header manipulation, or other transformations. Function code is not recoverable after deletion.\n\nSafer alternatives:\n- aws cloudfront get-function: Download function code first\n- Remove function associations from distributions first\n- Test replacements before deleting the original"
+        },
+        {
+          "name": "cloudfront-delete-response-headers-policy",
+          "regex": "aws\\s+cloudfront\\s+delete-response-headers-policy\\b",
+          "reason": "aws cloudfront delete-response-headers-policy removes a response headers policy.",
+          "severity": "high",
+          "explanation": "Deleting a response headers policy removes security headers like CORS, Content-Security-Policy, and HSTS settings. Browsers may block cross-origin requests or report security warnings after deletion.\n\nSafer alternatives:\n- Review which distributions use this policy\n- Test your site without these headers in staging\n- Create a replacement policy before deleting"
+        },
+        {
+          "name": "cloudfront-delete-key-group",
+          "regex": "aws\\s+cloudfront\\s+delete-key-group\\b",
+          "reason": "aws cloudfront delete-key-group removes a key group used for signed URLs.",
+          "severity": "critical",
+          "explanation": "Deleting a key group breaks signed URL and signed cookie validation. Users with existing signed URLs will lose access to protected content. Any distributions using this key group for restricted content will deny all requests.\n\nSafer alternatives:\n- Rotate keys by adding new keys before removing old ones\n- Verify no distributions reference this key group\n- Update applications to use new signing keys first"
+        },
+        {
+          "name": "cloudfront-create-invalidation",
+          "regex": "aws\\s+cloudfront\\s+create-invalidation\\b",
+          "reason": "aws cloudfront create-invalidation creates a cache invalidation (has cost implications).",
+          "severity": "medium",
+          "explanation": "Cache invalidations have cost implications after the first 1,000 paths per month. Wildcard invalidations (/*) count as one path but clear the entire cache, causing origin load spikes. Frequent invalidations defeat CDN benefits.\n\nSafer alternatives:\n- Use versioned URLs (file.v2.js) instead of invalidation\n- Invalidate specific paths rather than wildcards\n- Set appropriate Cache-Control headers at the origin"
+        }
+      ]
+    }
+  ]
+}

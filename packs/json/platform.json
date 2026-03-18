@@ -1,0 +1,277 @@
+{
+  "category": "platform",
+  "packs": [
+    {
+      "id": "platform.github",
+      "name": "GitHub Platform",
+      "description": "Protects against destructive GitHub CLI operations like deleting repositories, gists, releases, or SSH keys.",
+      "keywords": [
+        "gh"
+      ],
+      "safe_patterns": [
+        {
+          "name": "gh-repo-list-view",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+repo\\s+(?:list|view)\\b"
+        },
+        {
+          "name": "gh-gist-list-view",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+gist\\s+(?:list|view)\\b"
+        },
+        {
+          "name": "gh-release-list-view",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+release\\s+(?:list|view)\\b"
+        },
+        {
+          "name": "gh-issue-list-view",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+issue\\s+(?:list|view)\\b"
+        },
+        {
+          "name": "gh-ssh-key-list",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+ssh-key\\s+list\\b"
+        },
+        {
+          "name": "gh-secret-list",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+secret\\s+list\\b"
+        },
+        {
+          "name": "gh-variable-list",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+variable\\s+list\\b"
+        },
+        {
+          "name": "gh-auth-status",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+auth\\s+status\\b"
+        },
+        {
+          "name": "gh-status",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+status\\b"
+        },
+        {
+          "name": "gh-api-explicit-get",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+api\\b.*(?:-X|--method)\\s+GET\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "gh-repo-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+repo\\s+delete\\b",
+          "reason": "gh repo delete permanently deletes a GitHub repository. This cannot be undone.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-repo-archive",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+repo\\s+archive\\b",
+          "reason": "gh repo archive makes a repository read-only. While reversible, it stops all write access.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-gist-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+gist\\s+delete\\b",
+          "reason": "gh gist delete permanently deletes a Gist.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-release-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+release\\s+delete\\b",
+          "reason": "gh release delete permanently deletes a release.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-issue-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+issue\\s+delete\\b",
+          "reason": "gh issue delete permanently deletes an issue.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-ssh-key-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+ssh-key\\s+delete\\b",
+          "reason": "gh ssh-key delete removes an SSH key, potentially breaking access.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-secret-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+secret\\s+(?:delete|remove)\\b",
+          "reason": "gh secret delete removes GitHub Actions secrets.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-variable-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+variable\\s+(?:delete|remove)\\b",
+          "reason": "gh variable delete removes GitHub Actions variables.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-repo-deploy-key-delete",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+repo\\s+deploy-key\\s+delete\\b",
+          "reason": "gh repo deploy-key delete removes a deploy key and can break access.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-run-cancel",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+run\\s+cancel\\b",
+          "reason": "gh run cancel stops a workflow run and may interrupt deployments.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-api-delete-actions-secret",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?repos/[^/\\s]+/[^/\\s]+/actions/secrets/",
+          "reason": "gh api DELETE actions/secrets removes GitHub Actions secrets.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-api-delete-actions-variable",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?repos/[^/\\s]+/[^/\\s]+/actions/variables/",
+          "reason": "gh api DELETE actions/variables removes GitHub Actions variables.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-api-delete-hook",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?repos/[^/\\s]+/[^/\\s]+/hooks/",
+          "reason": "gh api DELETE hooks removes repository webhooks.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-api-delete-deploy-key",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?repos/[^/\\s]+/[^/\\s]+/keys/",
+          "reason": "gh api DELETE keys removes deploy keys.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-api-delete-release",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?repos/[^/\\s]+/[^/\\s]+/releases/",
+          "reason": "gh api DELETE releases removes GitHub releases.",
+          "severity": "critical"
+        },
+        {
+          "name": "gh-api-delete-repo",
+          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:repo|gist|release|issue|ssh-key|secret|variable|run|auth|status|api)\\b)(?:(?:\\x22[^\\x22]*\\x22)|(?:'[^']*')|\\S+))?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b",
+          "reason": "gh api DELETE calls can be destructive. Please verify the endpoint.",
+          "severity": "critical"
+        }
+      ]
+    },
+    {
+      "id": "platform.gitlab",
+      "name": "GitLab Platform",
+      "description": "Protects against destructive GitLab platform operations like deleting projects, releases, protected branches, and webhooks.",
+      "keywords": [
+        "glab",
+        "gitlab-rails",
+        "gitlab-rake"
+      ],
+      "safe_patterns": [
+        {
+          "name": "glab-repo-list",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+repo\\s+list\\b"
+        },
+        {
+          "name": "glab-repo-view",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+repo\\s+view\\b"
+        },
+        {
+          "name": "glab-repo-clone",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+repo\\s+clone\\b"
+        },
+        {
+          "name": "glab-mr-list",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+mr\\s+list\\b"
+        },
+        {
+          "name": "glab-mr-view",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+mr\\s+view\\b"
+        },
+        {
+          "name": "glab-issue-list",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+issue\\s+list\\b"
+        },
+        {
+          "name": "glab-issue-view",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+issue\\s+view\\b"
+        },
+        {
+          "name": "glab-variable-list",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+variable\\s+list\\b"
+        },
+        {
+          "name": "glab-release-list",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+release\\s+list\\b"
+        },
+        {
+          "name": "glab-release-view",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+release\\s+view\\b"
+        },
+        {
+          "name": "glab-api-explicit-get",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+GET\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "glab-repo-delete",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+repo\\s+delete\\b",
+          "reason": "glab repo delete permanently deletes a GitLab project.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-repo-archive",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+repo\\s+archive\\b",
+          "reason": "glab repo archive makes a GitLab project read-only.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-release-delete",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+release\\s+delete\\b",
+          "reason": "glab release delete removes GitLab releases.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-variable-delete",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+variable\\s+(?:delete|remove)\\b",
+          "reason": "glab variable delete removes GitLab CI/CD variables.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-api-delete-project",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?projects/[^/\\s]+(?:\\s|$)",
+          "reason": "glab api DELETE /projects/* deletes a GitLab project.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-api-delete-release",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?projects/[^/\\s]+/releases/",
+          "reason": "glab api DELETE releases removes GitLab releases.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-api-delete-variable",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?projects/[^/\\s]+/variables/",
+          "reason": "glab api DELETE variables removes CI/CD variables.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-api-delete-protected-branch",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?protected_branches/",
+          "reason": "glab api DELETE protected_branches removes branch protections.",
+          "severity": "critical"
+        },
+        {
+          "name": "glab-api-delete-hook",
+          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*(?:/)?hooks/",
+          "reason": "glab api DELETE hooks removes GitLab webhooks.",
+          "severity": "critical"
+        },
+        {
+          "name": "gitlab-rails-runner-destructive",
+          "regex": "gitlab-rails\\s+runner\\b.*\\b(?:destroy_all|delete_all|\\.destroy\\b|\\.delete\\b|truncate|drop)\\b",
+          "reason": "gitlab-rails runner destructive operations can remove data.",
+          "severity": "critical"
+        },
+        {
+          "name": "gitlab-rake-destructive",
+          "regex": "gitlab-rake\\b.*\\b(?:gitlab:)?backup:restore\\b|gitlab-rake\\b.*\\b(?:gitlab:)?db:(?:drop|reset)\\b",
+          "reason": "gitlab-rake destructive maintenance tasks can delete or replace data.",
+          "severity": "critical"
+        }
+      ]
+    }
+  ]
+}
