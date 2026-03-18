@@ -93,8 +93,17 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          release_id=$(gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" --jq .id)
+          release_id="$(
+            gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name == env.TAG_NAME) | .id' \
+              | head -n1
+          )"
+          if [[ -z "$release_id" ]]; then
+            echo "Release not found for tag $TAG_NAME" >&2
+            exit 1
+          fi
           gh api \
             --method PATCH \
             "repos/${{ github.repository }}/releases/${release_id}" \
