@@ -1,0 +1,352 @@
+{
+  "category": "monitoring",
+  "packs": [
+    {
+      "id": "monitoring.splunk",
+      "name": "Splunk",
+      "description": "Protects against destructive Splunk CLI/API operations like index removal and REST API DELETE calls",
+      "keywords": [
+        "splunk"
+      ],
+      "safe_patterns": [
+        {
+          "name": "splunk-list",
+          "regex": "splunk\\s+list\\b"
+        },
+        {
+          "name": "splunk-show",
+          "regex": "splunk\\s+show\\b"
+        },
+        {
+          "name": "splunk-search",
+          "regex": "splunk\\s+search\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "splunk-remove-index",
+          "regex": "splunk\\s+remove\\s+index\\b",
+          "reason": "splunk remove index deletes an index and its data permanently.",
+          "severity": "critical",
+          "explanation": "Removing a Splunk index permanently deletes all indexed data within it. Historical logs, events, and metrics are irretrievably lost. Any searches, dashboards, or alerts referencing this index will fail.\n\nSafer alternatives:\n- splunk list index: Review index before removal\n- Archive the data before deletion\n- Use retention policies instead of manual deletion"
+        },
+        {
+          "name": "splunk-clean-eventdata",
+          "regex": "splunk\\s+clean\\s+eventdata\\b",
+          "reason": "splunk clean eventdata permanently deletes indexed data.",
+          "severity": "critical",
+          "explanation": "Clean eventdata permanently removes all events from the specified index. This cannot be undone. Use this only when you're certain the data is no longer needed.\n\nSafer alternatives:\n- Set retention policies for automatic cleanup\n- Export data before cleaning\n- Use splunk search to verify what will be deleted"
+        },
+        {
+          "name": "splunk-delete-user-role",
+          "regex": "splunk\\s+delete\\s+(?:user|role)\\b",
+          "reason": "splunk delete user/role removes access configurations. Verify before deleting.",
+          "severity": "high",
+          "explanation": "Deleting a user removes their access and any saved searches or dashboards owned by them. Deleting a role affects all users assigned to it, potentially breaking access controls.\n\nSafer alternatives:\n- splunk list user/role: Review before deletion\n- Disable the user instead of deleting\n- Reassign role capabilities before deletion"
+        },
+        {
+          "name": "splunk-api-delete",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*splunk.*\\/services\\/",
+          "reason": "Splunk REST DELETE calls can permanently remove objects. Verify the endpoint.",
+          "severity": "high",
+          "explanation": "Direct API DELETE calls to Splunk services can remove indexes, saved searches, dashboards, alerts, and other objects without confirmation.\n\nSafer alternatives:\n- GET the resource first to verify the object\n- Use Splunk CLI or web UI for better feedback\n- Export configuration before deletion"
+        }
+      ]
+    },
+    {
+      "id": "monitoring.datadog",
+      "name": "Datadog",
+      "description": "Protects against destructive Datadog CLI/API operations like deleting monitors and dashboards.",
+      "keywords": [
+        "datadog-ci",
+        "datadoghq",
+        "datadog",
+        "api.datadoghq.com"
+      ],
+      "safe_patterns": [
+        {
+          "name": "datadog-ci-monitors-list",
+          "regex": "datadog-ci\\s+monitors\\s+(?:get|list)\\b"
+        },
+        {
+          "name": "datadog-ci-dashboards-list",
+          "regex": "datadog-ci\\s+dashboards\\s+(?:get|list)\\b"
+        },
+        {
+          "name": "datadog-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*api\\.datadoghq\\.com"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "datadog-ci-monitors-delete",
+          "regex": "datadog-ci\\s+monitors\\s+delete\\b",
+          "reason": "datadog-ci monitors delete removes a Datadog monitor.",
+          "severity": "high",
+          "explanation": "Deleting a Datadog monitor stops all alerting for that check. You will no longer be notified if the monitored condition occurs, potentially missing critical production issues.\n\nSafer alternatives:\n- datadog-ci monitors get <id>: Review the monitor configuration first\n- Mute the monitor temporarily instead of deleting\n- Export monitor JSON configuration as backup before deletion"
+        },
+        {
+          "name": "datadog-ci-dashboards-delete",
+          "regex": "datadog-ci\\s+dashboards\\s+delete\\b",
+          "reason": "datadog-ci dashboards delete removes a Datadog dashboard.",
+          "severity": "high",
+          "explanation": "Deleting a dashboard removes all widgets, queries, and layout configuration. Team members relying on this dashboard for visibility will lose access immediately.\n\nSafer alternatives:\n- datadog-ci dashboards get <id>: Export dashboard JSON first\n- Clone the dashboard before making changes\n- Use Terraform or Pulumi for version-controlled dashboard definitions"
+        },
+        {
+          "name": "datadog-api-delete",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.datadoghq\\.com.*\\/(monitor|dashboard|synthetics)\\/",
+          "reason": "Datadog API DELETE calls remove monitors/dashboards/synthetics.",
+          "severity": "high",
+          "explanation": "Direct API DELETE calls permanently remove Datadog resources without confirmation prompts. Monitors, dashboards, and synthetic tests are deleted immediately.\n\nSafer alternatives:\n- GET the resource first to verify the ID and export configuration\n- Use datadog-ci CLI which provides better feedback\n- Use Terraform/Pulumi for auditable, reversible infrastructure changes"
+        },
+        {
+          "name": "terraform-datadog-destroy",
+          "regex": "terraform\\s+destroy\\b.*\\bdatadog_[a-zA-Z0-9_]+\\b",
+          "reason": "terraform destroy targeting Datadog resources removes monitoring infrastructure.",
+          "severity": "high",
+          "explanation": "Terraform destroy removes Datadog monitors, dashboards, and other resources defined in your configuration. While Terraform tracks state, the actual monitoring resources are deleted immediately from Datadog.\n\nSafer alternatives:\n- terraform plan -destroy -target=... to preview deletions\n- terraform state rm to stop managing without deleting\n- Remove from Terraform config and apply instead of destroy"
+        }
+      ]
+    },
+    {
+      "id": "monitoring.pagerduty",
+      "name": "PagerDuty",
+      "description": "Protects against destructive PagerDuty CLI/API operations like deleting services and schedules (which can break incident routing).",
+      "keywords": [
+        "pd",
+        "pagerduty",
+        "api.pagerduty.com"
+      ],
+      "safe_patterns": [
+        {
+          "name": "pd-service-read",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+service\\s+(?:list|get)\\b"
+        },
+        {
+          "name": "pd-schedule-read",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+schedule\\s+(?:list|get)\\b"
+        },
+        {
+          "name": "pd-incident-list",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+incident\\s+list\\b"
+        },
+        {
+          "name": "pagerduty-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*api\\.pagerduty\\.com"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "pd-service-delete",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+service\\s+delete\\b",
+          "reason": "pd service delete removes a PagerDuty service, which can break incident routing.",
+          "severity": "critical",
+          "explanation": "Deleting a PagerDuty service removes all incident routing, integrations, and escalation policies attached to it. Incidents will no longer be created for this service, potentially causing outages to go unnoticed.\n\nSafer alternatives:\n- pd service list: Verify the service before deletion\n- Disable the service temporarily instead of deleting\n- Export service configuration via API before deletion"
+        },
+        {
+          "name": "pd-schedule-delete",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+schedule\\s+delete\\b",
+          "reason": "pd schedule delete removes a PagerDuty schedule.",
+          "severity": "high",
+          "explanation": "Deleting a schedule removes all on-call rotations and overrides. Escalation policies using this schedule will have gaps in coverage, potentially leaving incidents unassigned.\n\nSafer alternatives:\n- pd schedule get <id>: Review schedule details first\n- Update the schedule rather than deleting\n- Check which escalation policies reference this schedule"
+        },
+        {
+          "name": "pd-escalation-policy-delete",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+escalation-policy\\s+delete\\b",
+          "reason": "pd escalation-policy delete removes a PagerDuty escalation policy.",
+          "severity": "high",
+          "explanation": "Deleting an escalation policy breaks incident routing for all services using it. Incidents may not be escalated properly, leading to delayed response times.\n\nSafer alternatives:\n- Review which services use this escalation policy\n- Update the policy rather than deleting\n- Assign services to a different policy before deletion"
+        },
+        {
+          "name": "pd-user-delete",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+user\\s+delete\\b",
+          "reason": "pd user delete removes a PagerDuty user.",
+          "severity": "high",
+          "explanation": "Deleting a user removes them from all schedules and escalation policies. On-call coverage may have gaps, and incident history associated with this user may be affected.\n\nSafer alternatives:\n- Deactivate the user instead of deleting\n- Reassign their schedule shifts first\n- Transfer incident ownership before deletion"
+        },
+        {
+          "name": "pd-team-delete",
+          "regex": "\\bpd\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+team\\s+delete\\b",
+          "reason": "pd team delete removes a PagerDuty team.",
+          "severity": "high",
+          "explanation": "Deleting a team removes the organizational grouping and may affect access controls, service ownership, and escalation policies.\n\nSafer alternatives:\n- pd team list: Verify the team before deletion\n- Reassign team members and services first\n- Merge teams rather than delete"
+        },
+        {
+          "name": "pagerduty-api-delete-service",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.pagerduty\\.com[^\\s]*?/services/[^\\s]+",
+          "reason": "PagerDuty API DELETE /services/{id} deletes a PagerDuty service.",
+          "severity": "critical",
+          "explanation": "Direct API deletion of a service removes all incident routing immediately. There is no confirmation prompt when using curl directly.\n\nSafer alternatives:\n- GET the service first to verify the ID\n- Use the pd CLI for better feedback\n- Export service configuration before deletion"
+        },
+        {
+          "name": "pagerduty-api-delete-schedule",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.pagerduty\\.com[^\\s]*?/schedules/[^\\s]+",
+          "reason": "PagerDuty API DELETE /schedules/{id} deletes a PagerDuty schedule.",
+          "severity": "high",
+          "explanation": "API deletion of a schedule removes on-call rotations immediately. Escalation policies referencing this schedule will have coverage gaps.\n\nSafer alternatives:\n- GET the schedule first to verify the ID\n- Use the pd CLI for better feedback\n- Check dependent escalation policies before deletion"
+        }
+      ]
+    },
+    {
+      "id": "monitoring.newrelic",
+      "name": "New Relic",
+      "description": "Protects against destructive New Relic CLI/API operations like deleting entities or alerting resources.",
+      "keywords": [
+        "newrelic",
+        "api.newrelic.com",
+        "graphql"
+      ],
+      "safe_patterns": [
+        {
+          "name": "newrelic-entity-search",
+          "regex": "\\bnewrelic\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+entity\\s+search\\b"
+        },
+        {
+          "name": "newrelic-apm-app-get",
+          "regex": "\\bnewrelic\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+apm\\s+application\\s+get\\b"
+        },
+        {
+          "name": "newrelic-query",
+          "regex": "\\bnewrelic\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+query\\b"
+        },
+        {
+          "name": "newrelic-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*api\\.newrelic\\.com"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "newrelic-entity-delete",
+          "regex": "\\bnewrelic\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+entity\\s+delete\\b",
+          "reason": "newrelic entity delete removes a New Relic entity, impacting observability.",
+          "severity": "high",
+          "explanation": "Deleting a New Relic entity removes all associated telemetry data, relationships, and alert configurations. Historical metrics for this entity will no longer be accessible.\n\nSafer alternatives:\n- newrelic entity search: Find and verify the entity first\n- Tag the entity as deprecated instead of deleting\n- Export entity configuration before deletion"
+        },
+        {
+          "name": "newrelic-apm-app-delete",
+          "regex": "\\bnewrelic\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+apm\\s+application\\s+delete\\b",
+          "reason": "newrelic apm application delete removes an APM application.",
+          "severity": "high",
+          "explanation": "Deleting an APM application removes all application performance data, traces, and associated alert policies. You lose visibility into application behavior and historical performance trends.\n\nSafer alternatives:\n- newrelic apm application get <id>: Review application details first\n- Disable the APM agent in your application instead\n- Export application settings and dashboards as backup"
+        },
+        {
+          "name": "newrelic-workload-delete",
+          "regex": "\\bnewrelic\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+workload\\s+delete\\b",
+          "reason": "newrelic workload delete removes a workload definition.",
+          "severity": "high",
+          "explanation": "Deleting a workload removes the logical grouping of entities and any associated health status calculations. Teams using this workload for service overview will lose their aggregated view.\n\nSafer alternatives:\n- Review workload entities and dependencies first\n- Export workload definition using the API\n- Modify the workload rather than deleting and recreating"
+        },
+        {
+          "name": "newrelic-synthetics-delete",
+          "regex": "\\bnewrelic\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+synthetics\\s+delete\\b",
+          "reason": "newrelic synthetics delete removes a synthetics monitor.",
+          "severity": "high",
+          "explanation": "Deleting a synthetics monitor stops all uptime and availability checking for the monitored endpoint. You will no longer receive alerts when the endpoint becomes unavailable or slow.\n\nSafer alternatives:\n- Disable the monitor temporarily instead of deleting\n- Export monitor configuration as code (Terraform/Pulumi)\n- newrelic synthetics search: Verify you're deleting the correct monitor"
+        },
+        {
+          "name": "newrelic-api-delete",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.newrelic\\.com",
+          "reason": "New Relic API DELETE calls remove monitoring/alerting resources.",
+          "severity": "high",
+          "explanation": "Direct API DELETE calls permanently remove New Relic resources without confirmation. Alert policies, dashboards, and monitors are deleted immediately.\n\nSafer alternatives:\n- GET the resource first to verify the ID and export configuration\n- Use the New Relic CLI for better feedback and confirmation\n- Use Terraform/Pulumi for version-controlled resource management"
+        },
+        {
+          "name": "newrelic-graphql-delete-mutation",
+          "regex": "(?i)curl\\s+.*api\\.newrelic\\.com[^\\s]*?/graphql\\b.*\\bmutation\\b.*\\bdelete\\w*\\b",
+          "reason": "New Relic GraphQL delete mutations can remove monitoring resources.",
+          "severity": "high",
+          "explanation": "GraphQL delete mutations remove New Relic resources via the NerdGraph API. This affects entities, dashboards, alert policies, and other observability resources.\n\nSafer alternatives:\n- Run a query first to verify the GUID or resource ID\n- Use the New Relic CLI or UI for deletion with better feedback\n- Export the resource definition before deletion"
+        }
+      ]
+    },
+    {
+      "id": "monitoring.prometheus",
+      "name": "Prometheus/Grafana",
+      "description": "Protects against destructive Prometheus/Grafana operations like deleting time series data or dashboards/datasources.",
+      "keywords": [
+        "promtool",
+        "grafana-cli",
+        "grafana",
+        "/api/v1/admin/tsdb/delete_series",
+        "delete_series",
+        "/api/dashboards",
+        "/api/datasources",
+        "/api/alert-notifications",
+        "/etc/prometheus",
+        "rules.d",
+        "prometheusrule",
+        "servicemonitor",
+        "podmonitor"
+      ],
+      "safe_patterns": [
+        {
+          "name": "promtool-check-rules",
+          "regex": "\\bpromtool\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+check\\s+rules\\b"
+        },
+        {
+          "name": "promtool-query",
+          "regex": "\\bpromtool\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+query\\b"
+        },
+        {
+          "name": "prometheus-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*\\/api\\/v1\\/"
+        },
+        {
+          "name": "grafana-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*\\/api\\/"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "prometheus-rules-file-delete",
+          "regex": "\\brm\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+(?:(?:-f|--force)\\s+)?(?:/etc/prometheus/(?:rules\\.d|rules)/\\S+|/etc/prometheus/(?:prometheus|rules)\\.(?:ya?ml))(?:\\s|$)",
+          "reason": "Deleting Prometheus rule/config files can break alerting and monitoring coverage.",
+          "severity": "critical",
+          "explanation": "Deleting Prometheus configuration or rule files stops alerting for the defined conditions. After Prometheus reloads, those alerts will no longer fire, potentially leaving critical conditions unmonitored.\n\nSafer alternatives:\n- promtool check rules: Validate rule files before changes\n- Back up files before deletion\n- Use version control (git) for rule files"
+        },
+        {
+          "name": "prometheus-tsdb-delete-series",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+POST\\b.*\\/api\\/v1\\/admin\\/tsdb\\/delete_series\\b",
+          "reason": "Prometheus TSDB delete_series permanently deletes time series data.",
+          "severity": "critical",
+          "explanation": "The delete_series admin endpoint permanently removes time series data matching the specified selectors. This data cannot be recovered. Historical metrics for the deleted series will show gaps.\n\nSafer alternatives:\n- Query the series first to verify what will be deleted\n- Use retention policies instead of manual deletion\n- Take a TSDB snapshot before deletion"
+        },
+        {
+          "name": "kubectl-delete-prometheus-operator-resources",
+          "regex": "\\bkubectl\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete\\s+(?:prometheusrules?|servicemonitors?|podmonitors?)(?:\\.monitoring\\.coreos\\.com)?\\b",
+          "reason": "kubectl delete of Prometheus Operator resources (PrometheusRule/ServiceMonitor/PodMonitor) removes alerting/target configuration.",
+          "severity": "high",
+          "explanation": "Deleting Prometheus Operator CRDs removes alerting rules or scrape targets. The Prometheus Operator will update Prometheus configuration, potentially leaving services unmonitored.\n\nSafer alternatives:\n- kubectl get to review the resource first\n- kubectl describe to see what it configures\n- Export YAML before deletion: kubectl get -o yaml"
+        },
+        {
+          "name": "grafana-cli-plugins-uninstall",
+          "regex": "\\bgrafana-cli\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+plugins\\s+uninstall\\b",
+          "reason": "grafana-cli plugins uninstall removes a Grafana plugin, potentially breaking dashboards.",
+          "severity": "high",
+          "explanation": "Uninstalling a Grafana plugin breaks all dashboards using that plugin's panels or datasources. Users will see error messages where those panels were.\n\nSafer alternatives:\n- grafana-cli plugins list: Review installed plugins first\n- Check which dashboards use the plugin before removal\n- Update the plugin instead of uninstalling"
+        },
+        {
+          "name": "grafana-api-delete-dashboard",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*\\/api\\/dashboards\\/",
+          "reason": "Grafana API DELETE /api/dashboards/... deletes dashboards.",
+          "severity": "high",
+          "explanation": "Deleting a Grafana dashboard removes all panels, queries, and configuration. Teams relying on this dashboard for monitoring will lose visibility.\n\nSafer alternatives:\n- GET /api/dashboards/uid/<uid> to export JSON first\n- Use Grafana provisioning for version-controlled dashboards\n- Use dashboard versioning in Grafana to restore later"
+        },
+        {
+          "name": "grafana-api-delete-datasource",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*\\/api\\/datasources\\/",
+          "reason": "Grafana API DELETE /api/datasources/... deletes datasources.",
+          "severity": "high",
+          "explanation": "Deleting a datasource breaks all dashboards and alerts using it. Panels will show 'Data source not found' errors, and alerting queries will fail.\n\nSafer alternatives:\n- GET the datasource first to verify the ID\n- Check which dashboards use this datasource\n- Use Grafana provisioning for datasource-as-code"
+        },
+        {
+          "name": "grafana-api-delete-alert-notification",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*\\/api\\/alert-notifications\\/",
+          "reason": "Grafana API DELETE /api/alert-notifications/... deletes alert notification channels.",
+          "severity": "high",
+          "explanation": "Deleting a notification channel stops alert delivery to that destination. Alerts using this channel will fire but notifications won't be sent.\n\nSafer alternatives:\n- GET the notification channel first to verify the ID\n- Check which alerts use this notification channel\n- Disable the channel instead of deleting"
+        }
+      ]
+    }
+  ]
+}

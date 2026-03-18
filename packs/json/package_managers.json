@@ -1,0 +1,219 @@
+{
+  "category": "package_managers",
+  "packs": [
+    {
+      "id": "package_managers",
+      "name": "Package Managers",
+      "description": "Protects against dangerous package manager operations like publishing packages and removing critical system packages",
+      "keywords": [
+        "npm",
+        "yarn",
+        "pnpm",
+        "pip",
+        "apt",
+        "yum",
+        "dnf",
+        "cargo",
+        "gem",
+        "brew",
+        "poetry",
+        "mvn",
+        "mvnw",
+        "gradle",
+        "gradlew",
+        "publish",
+        "nuget"
+      ],
+      "safe_patterns": [
+        {
+          "name": "npm-install",
+          "regex": "npm\\s+(?:install|i|ci)\\b"
+        },
+        {
+          "name": "yarn-add",
+          "regex": "yarn\\s+(?:add|install)\\b"
+        },
+        {
+          "name": "pnpm-install",
+          "regex": "pnpm\\s+(?:add|install|i)\\b"
+        },
+        {
+          "name": "npm-list",
+          "regex": "npm\\s+(?:list|ls|info|view)\\b"
+        },
+        {
+          "name": "yarn-list",
+          "regex": "yarn\\s+(?:list|info|why)\\b"
+        },
+        {
+          "name": "npm-audit",
+          "regex": "npm\\s+audit"
+        },
+        {
+          "name": "yarn-audit",
+          "regex": "yarn\\s+audit"
+        },
+        {
+          "name": "pip-list",
+          "regex": "pip\\s+(?:list|show|freeze)\\b"
+        },
+        {
+          "name": "poetry-show",
+          "regex": "poetry\\s+show\\b"
+        },
+        {
+          "name": "poetry-env-list",
+          "regex": "poetry\\s+env\\s+list\\b"
+        },
+        {
+          "name": "cargo-safe",
+          "regex": "cargo\\s+(?:build|test|check|clippy|fmt|doc|bench)\\b"
+        },
+        {
+          "name": "apt-list",
+          "regex": "apt\\s+(?:list|show|search)\\b"
+        },
+        {
+          "name": "apt-get-list",
+          "regex": "apt-get\\s+(?:update|upgrade)(?!\\s+.*-y)"
+        },
+        {
+          "name": "npm-dry-run",
+          "regex": "npm\\s+.*--dry-run"
+        },
+        {
+          "name": "cargo-dry-run",
+          "regex": "cargo\\s+.*--dry-run"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "npm-deprecate",
+          "regex": "npm\\s+deprecate\\b",
+          "reason": "npm deprecate marks a package version as deprecated.",
+          "severity": "medium",
+          "explanation": "Deprecating a package version informs users that it should no longer be used. This affects all users of the package on their next install or update."
+        },
+        {
+          "name": "nuget-delete",
+          "regex": "nuget\\s+delete\\b",
+          "reason": "nuget delete removes a package from the server or marks it as unlisted.",
+          "severity": "high",
+          "explanation": "Deleting a NuGet package can break existing projects that depend on it. Many servers (like nuget.org) only allow unlisting rather than full deletion to preserve reproducibility."
+        },
+        {
+          "name": "npm-publish",
+          "regex": "npm\\s+publish\\b(?!.*--dry-run)",
+          "reason": "npm publish releases a package publicly. Use --dry-run first.",
+          "severity": "high",
+          "explanation": "Publishing an npm package releases it to the public registry. Once published, a version cannot be unpublished for 72 hours. Always run with --dry-run first to verify the package contents."
+        },
+        {
+          "name": "yarn-publish",
+          "regex": "yarn\\s+publish\\b(?!.*--dry-run)",
+          "reason": "yarn publish releases a package publicly. Verify package.json first.",
+          "severity": "high",
+          "explanation": "Publishing a yarn package releases it to the public registry. Verify the package.json version and files configuration before publishing."
+        },
+        {
+          "name": "pnpm-publish",
+          "regex": "pnpm\\s+publish\\b(?!.*--dry-run)",
+          "reason": "pnpm publish releases a package publicly.",
+          "severity": "high",
+          "explanation": "Publishing a pnpm package releases it to the public registry. Use --dry-run first to verify what will be published."
+        },
+        {
+          "name": "npm-unpublish",
+          "regex": "npm\\s+unpublish\\b",
+          "reason": "npm unpublish removes a published package. This can break dependent projects.",
+          "severity": "critical",
+          "explanation": "Unpublishing an npm package removes it from the registry, breaking all projects that depend on it. npm restricts unpublishing to 72 hours after publishing for packages with dependents."
+        },
+        {
+          "name": "pip-url",
+          "regex": "pip\\s+install\\s+(?:https?://|git\\+)",
+          "reason": "pip install from URL can install unvetted code. Verify the source first.",
+          "severity": "high",
+          "explanation": "Installing packages directly from URLs or git repositories bypasses PyPI's security scanning. Only install from trusted and verified sources."
+        },
+        {
+          "name": "pip-system",
+          "regex": "pip\\s+install\\s+.*--(?:system|target\\s*/usr)",
+          "reason": "pip install to system directories requires careful review.",
+          "severity": "medium",
+          "explanation": "Installing pip packages to system directories can conflict with system-managed packages and break system tools."
+        },
+        {
+          "name": "pip-sudo-install",
+          "regex": "sudo\\s+pip3?\\s+install\\b",
+          "reason": "sudo pip install modifies system-level packages and can break system tools.",
+          "severity": "high",
+          "explanation": "Running pip install with sudo installs packages to the system Python directories. This can conflict with system-managed packages, break system tools like apt, and create security risks.\n\nSafer alternatives:\n- Use a virtual environment: python -m venv myenv && source myenv/bin/activate\n- Use pip install --user for user-level installs\n- Use pipx for installing CLI tools"
+        },
+        {
+          "name": "apt-remove",
+          "regex": "apt(?:-get)?\\s+(?:remove|purge|autoremove)\\b",
+          "reason": "apt remove/purge removes packages. Verify no critical packages are affected.",
+          "severity": "high",
+          "explanation": "Removing packages with apt can uninstall critical system packages or break dependencies. Always verify what will be removed before proceeding."
+        },
+        {
+          "name": "yum-remove",
+          "regex": "(?:yum|dnf)\\s+(?:remove|erase|autoremove)\\b",
+          "reason": "yum/dnf remove removes packages. Verify no critical packages are affected.",
+          "severity": "high",
+          "explanation": "Removing packages with yum or dnf can uninstall critical system packages or break dependencies. Always verify what will be removed before proceeding."
+        },
+        {
+          "name": "cargo-publish",
+          "regex": "cargo\\s+publish\\b(?!.*--dry-run)",
+          "reason": "cargo publish releases a crate to crates.io. Use --dry-run first.",
+          "severity": "high",
+          "explanation": "Publishing a cargo crate releases it to crates.io permanently. Versions cannot be deleted. Always use --dry-run first to verify what will be published."
+        },
+        {
+          "name": "cargo-yank",
+          "regex": "cargo\\s+yank\\b",
+          "reason": "cargo yank marks a version as unavailable. This can break dependent projects.",
+          "severity": "high",
+          "explanation": "Yanking a cargo crate version prevents new projects from using it. Existing projects with exact version pins will still download it, but projects using version ranges may break."
+        },
+        {
+          "name": "gem-push",
+          "regex": "gem\\s+push\\b",
+          "reason": "gem push releases a gem to rubygems.org. Verify before publishing.",
+          "severity": "high",
+          "explanation": "Pushing a gem releases it to rubygems.org. Once released, a version cannot be removed. Verify the gem version and contents before pushing."
+        },
+        {
+          "name": "poetry-publish",
+          "regex": "poetry\\s+publish\\b(?!.*--dry-run)",
+          "reason": "poetry publish releases a package. Use --dry-run first.",
+          "severity": "high",
+          "explanation": "Publishing a poetry package releases it to PyPI or a configured repository. Use --dry-run first to verify the package contents."
+        },
+        {
+          "name": "maven-deploy",
+          "regex": "(?:mvn|mvnw)\\s+deploy\\b",
+          "reason": "mvn deploy publishes artifacts to a remote repository. Verify target repository.",
+          "severity": "high",
+          "explanation": "Maven deploy uploads artifacts to a remote repository. Verify the target repository URL and credentials, and ensure the artifact version is correct before deploying."
+        },
+        {
+          "name": "maven-release-perform",
+          "regex": "(?:mvn|mvnw)\\s+.*release:perform\\b",
+          "reason": "mvn release:perform publishes a release. Verify version and repository.",
+          "severity": "high",
+          "explanation": "Maven release:perform performs the release deployment after release:prepare. This tags the repository, increments the version, and deploys the artifacts. Ensure all checks have passed before running."
+        },
+        {
+          "name": "gradle-publish",
+          "regex": "(?:gradle|gradlew)\\s+.*\\bpublish\\b",
+          "reason": "gradle publish uploads artifacts. Use --dry-run first when possible.",
+          "severity": "high",
+          "explanation": "Gradle publish uploads artifacts to a configured repository. Verify the publication configuration and target repository before publishing."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+{
+  "category": "interpreters",
+  "packs": [
+    {
+      "id": "interpreters.python",
+      "name": "Python",
+      "description": "Detects destructive operations via Python inline commands",
+      "keywords": [
+        "python",
+        "python3"
+      ],
+      "safe_patterns": [
+        {
+          "name": "python-version",
+          "regex": "python3?\\s+--version"
+        },
+        {
+          "name": "python-help",
+          "regex": "python3?\\s+--help"
+        },
+        {
+          "name": "python-module-list",
+          "regex": "python3?\\s+-m\\s+pip\\s+(?:list|show|freeze)"
+        },
+        {
+          "name": "python-pip-install",
+          "regex": "python3?\\s+-m\\s+pip\\s+install"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "shutil-rmtree",
+          "regex": "python3?\\s+.*shutil\\.rmtree",
+          "reason": "Python shutil.rmtree() recursively deletes directory trees.",
+          "severity": "critical",
+          "explanation": "shutil.rmtree() is Python's equivalent of rm -rf. It recursively deletes an entire directory tree without confirmation.\n\nThis is irreversible and bypasses the trash.",
+          "suggestions": [
+            {
+              "command": "python3 -c \"import os; print(os.listdir('{path}'))\"",
+              "description": "List directory contents before deletion"
+            }
+          ]
+        },
+        {
+          "name": "os-remove",
+          "regex": "python3?\\s+.*os\\.(?:remove|unlink)\\s*\\(",
+          "reason": "Python os.remove()/os.unlink() permanently deletes files.",
+          "severity": "high",
+          "explanation": "os.remove() and os.unlink() permanently delete a single file. The deletion is immediate and irreversible."
+        },
+        {
+          "name": "os-rmdir",
+          "regex": "python3?\\s+.*os\\.(?:rmdir|removedirs)\\s*\\(",
+          "reason": "Python os.rmdir()/os.removedirs() removes directories.",
+          "severity": "high",
+          "explanation": "os.rmdir() removes a single empty directory. os.removedirs() removes directories recursively (only empty ones, but can remove a chain)."
+        },
+        {
+          "name": "pathlib-rmtree",
+          "regex": "python3?\\s+.*(?:Path|pathlib).*\\.(?:rmdir|unlink)\\s*\\(",
+          "reason": "Python pathlib rmdir/unlink permanently deletes files or directories.",
+          "severity": "high",
+          "explanation": "pathlib.Path.unlink() deletes a file and pathlib.Path.rmdir() removes an empty directory. Both are irreversible."
+        },
+        {
+          "name": "subprocess-destructive",
+          "regex": "python3?\\s+.*subprocess\\.(?:run|call|Popen|check_call|check_output)\\s*\\(",
+          "reason": "Python subprocess executing commands can be destructive.",
+          "severity": "high",
+          "explanation": "subprocess.run(), subprocess.call(), subprocess.Popen(), and related functions execute arbitrary shell commands. When used with destructive commands like rm, they bypass Python's file API safety.\n\nReview the command being executed carefully before allowing."
+        },
+        {
+          "name": "open-truncate",
+          "regex": "python3?\\s+.*open\\s*\\(.*\\)\\.truncate\\s*\\(",
+          "reason": "Python open().truncate() destroys file contents.",
+          "severity": "high",
+          "explanation": "Opening a file and calling truncate() erases its contents. This is irreversible and can destroy critical system files or configuration data."
+        }
+      ]
+    },
+    {
+      "id": "interpreters.node",
+      "name": "Node.js",
+      "description": "Detects destructive operations via Node.js inline commands",
+      "keywords": [
+        "node"
+      ],
+      "safe_patterns": [
+        {
+          "name": "node-version",
+          "regex": "node\\s+--version"
+        },
+        {
+          "name": "node-eval-version",
+          "regex": "node\\s+-e\\s+.*process\\.version"
+        },
+        {
+          "name": "node-help",
+          "regex": "node\\s+--help"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "fs-rmsync",
+          "regex": "node\\s+.*(?:fs\\.rmSync|fs\\.rmdirSync|rimraf)",
+          "reason": "Node.js fs.rmSync()/rmdirSync() recursively deletes files and directories.",
+          "severity": "critical",
+          "explanation": "fs.rmSync() with {recursive: true} is Node's equivalent of rm -rf. fs.rmdirSync() with {recursive: true} is the older API with the same effect.\n\nBoth are irreversible."
+        },
+        {
+          "name": "fs-unlinksync",
+          "regex": "node\\s+.*fs\\.unlinkSync\\s*\\(",
+          "reason": "Node.js fs.unlinkSync() permanently deletes files.",
+          "severity": "high",
+          "explanation": "fs.unlinkSync() permanently deletes a file. The deletion is immediate and irreversible."
+        },
+        {
+          "name": "fs-rm-async",
+          "regex": "node\\s+.*(?:fs\\.rm\\s*\\(|fs\\.promises\\.rm\\s*\\(|fs\\.promises\\.rmdir\\s*\\()",
+          "reason": "Node.js fs.rm()/fs.promises.rm() asynchronously deletes files and directories.",
+          "severity": "critical",
+          "explanation": "The async rm/rmdir functions with {recursive: true} delete entire directory trees. Async deletion can be harder to interrupt once started."
+        },
+        {
+          "name": "fs-writefilesync",
+          "regex": "node\\s+.*fs\\.writeFileSync\\s*\\(",
+          "reason": "Node.js fs.writeFileSync() overwrites file contents, potentially destroying data.",
+          "severity": "high",
+          "explanation": "fs.writeFileSync() overwrites the entire contents of a file. When used on system files like /etc/passwd or configuration files, it can destroy critical data and break system functionality.\n\nReview the target file path carefully before allowing."
+        }
+      ]
+    },
+    {
+      "id": "interpreters.ruby",
+      "name": "Ruby",
+      "description": "Detects destructive operations via Ruby inline commands",
+      "keywords": [
+        "ruby"
+      ],
+      "safe_patterns": [
+        {
+          "name": "ruby-version",
+          "regex": "ruby\\s+--version"
+        },
+        {
+          "name": "ruby-help",
+          "regex": "ruby\\s+--help"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "fileutils-rm-rf",
+          "regex": "ruby\\s+.*FileUtils\\.rm_rf",
+          "reason": "Ruby FileUtils.rm_rf recursively deletes directory trees.",
+          "severity": "critical",
+          "explanation": "FileUtils.rm_rf is Ruby's equivalent of rm -rf. It recursively deletes an entire directory tree without confirmation. Irreversible."
+        },
+        {
+          "name": "fileutils-rm",
+          "regex": "ruby\\s+.*FileUtils\\.rm\\b",
+          "reason": "Ruby FileUtils.rm permanently deletes files.",
+          "severity": "high",
+          "explanation": "FileUtils.rm deletes one or more files permanently. With force: true, it suppresses errors for missing files."
+        },
+        {
+          "name": "file-delete",
+          "regex": "ruby\\s+.*File\\.delete",
+          "reason": "Ruby File.delete permanently deletes files.",
+          "severity": "high",
+          "explanation": "File.delete (alias File.unlink) permanently removes one or more files."
+        },
+        {
+          "name": "dir-rmdir",
+          "regex": "ruby\\s+.*(?:Dir\\.rmdir|Dir\\.delete|Dir\\.unlink)",
+          "reason": "Ruby Dir.rmdir removes directories.",
+          "severity": "high",
+          "explanation": "Dir.rmdir removes an empty directory. Combined with recursive file deletion, it can remove entire directory trees."
+        }
+      ]
+    },
+    {
+      "id": "interpreters.perl",
+      "name": "Perl",
+      "description": "Detects destructive operations via Perl inline commands",
+      "keywords": [
+        "perl"
+      ],
+      "safe_patterns": [
+        {
+          "name": "perl-version",
+          "regex": "perl\\s+--version"
+        },
+        {
+          "name": "perl-version-short",
+          "regex": "perl\\s+-v\\b"
+        },
+        {
+          "name": "perl-help",
+          "regex": "perl\\s+--help"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "remove-tree",
+          "regex": "perl\\s+.*(?:remove_tree|rmtree)\\s*\\(",
+          "reason": "Perl remove_tree()/rmtree() recursively deletes directory trees.",
+          "severity": "critical",
+          "explanation": "File::Path::remove_tree (and its alias rmtree) is Perl's equivalent of rm -rf. It recursively deletes an entire directory tree. Irreversible."
+        },
+        {
+          "name": "unlink",
+          "regex": "perl\\s+.*\\bunlink\\s*\\(",
+          "reason": "Perl unlink() permanently deletes files.",
+          "severity": "high",
+          "explanation": "unlink() permanently deletes one or more files. This is a core Perl function with no undo mechanism."
+        },
+        {
+          "name": "rmdir",
+          "regex": "perl\\s+.*\\brmdir\\s*\\(",
+          "reason": "Perl rmdir() removes directories.",
+          "severity": "high",
+          "explanation": "rmdir() removes an empty directory. Often used in combination with file deletion to remove directory trees."
+        }
+      ]
+    }
+  ]
+}

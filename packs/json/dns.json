@@ -1,0 +1,180 @@
+{
+  "category": "dns",
+  "packs": [
+    {
+      "id": "dns.cloudflare",
+      "name": "Cloudflare DNS",
+      "description": "Protects against destructive Cloudflare DNS operations like record deletion, zone deletion, and targeted Terraform destroy.",
+      "keywords": [
+        "wrangler",
+        "cloudflare",
+        "api.cloudflare.com",
+        "dns-records",
+        "dns"
+      ],
+      "safe_patterns": [
+        {
+          "name": "cloudflare-wrangler-dns-list",
+          "regex": "wrangler(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+(?:dns-records|dns)\\s+list\\b"
+        },
+        {
+          "name": "cloudflare-wrangler-whoami",
+          "regex": "wrangler(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+whoami\\b"
+        },
+        {
+          "name": "cloudflare-api-get",
+          "regex": "curl\\b.*\\s-X\\s*GET\\b.*\\bapi\\.cloudflare\\.com\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "cloudflare-wrangler-dns-delete",
+          "regex": "wrangler(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+(?:dns-records|dns)\\s+delete\\b",
+          "reason": "wrangler dns/dns-records delete removes a Cloudflare DNS record.",
+          "severity": "high",
+          "explanation": "Deleting a DNS record can immediately break connectivity to your website, API, or mail server. Propagation is fast on Cloudflare, so traffic may fail within seconds.\n\nSafer alternatives:\n- wrangler dns-records list to review records first\n- Export zone file as backup before deletion\n- Use Cloudflare dashboard for confirmation prompts"
+        },
+        {
+          "name": "cloudflare-api-delete-dns-record",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\bapi\\.cloudflare\\.com\\b[^\\s]*?/dns_records/[^\\s]+",
+          "reason": "curl -X DELETE against /dns_records/{id} deletes a Cloudflare DNS record.",
+          "severity": "high",
+          "explanation": "API deletion of a DNS record takes effect immediately across Cloudflare's network. There is no confirmation prompt when using curl directly.\n\nSafer alternatives:\n- GET the record first to verify the ID is correct\n- Use Terraform or Pulumi for auditable, reversible changes\n- Export zone configuration as backup before deletion"
+        },
+        {
+          "name": "cloudflare-api-delete-zone",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\bapi\\.cloudflare\\.com\\b[^\\s]*?/zones/[^\\s]+",
+          "reason": "curl -X DELETE against /zones/{id} deletes a Cloudflare zone.",
+          "severity": "critical",
+          "explanation": "Deleting a zone removes ALL DNS records, page rules, firewall rules, and settings for that domain. This can cause complete outage for all services on the domain with no easy recovery.\n\nSafer alternatives:\n- Export full zone configuration first\n- Remove individual records instead of the entire zone\n- Transfer domain to another Cloudflare account if needed"
+        },
+        {
+          "name": "cloudflare-terraform-destroy-record",
+          "regex": "terraform\\s+destroy\\s+.*-target=(?:resource\\.)?cloudflare_record\\.",
+          "reason": "terraform destroy -target=cloudflare_record deletes specific DNS records.",
+          "severity": "high",
+          "explanation": "Terraform destroy removes DNS records from Cloudflare. While Terraform state tracks the change, the DNS deletion is immediate and can break services.\n\nSafer alternatives:\n- terraform plan -destroy -target=... to preview first\n- Remove from terraform config and run terraform apply instead\n- Use terraform state rm to stop managing without deleting"
+        }
+      ]
+    },
+    {
+      "id": "dns.route53",
+      "name": "AWS Route53",
+      "description": "Protects against destructive AWS Route53 DNS operations like hosted zone deletion and record set DELETE changes.",
+      "keywords": [
+        "aws",
+        "route53"
+      ],
+      "safe_patterns": [
+        {
+          "name": "route53-list-hosted-zones",
+          "regex": "aws\\s+route53\\s+list-hosted-zones\\b"
+        },
+        {
+          "name": "route53-list-resource-record-sets",
+          "regex": "aws\\s+route53\\s+list-resource-record-sets\\b"
+        },
+        {
+          "name": "route53-get-hosted-zone",
+          "regex": "aws\\s+route53\\s+get-hosted-zone\\b"
+        },
+        {
+          "name": "route53-test-dns-answer",
+          "regex": "aws\\s+route53\\s+test-dns-answer\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "route53-delete-hosted-zone",
+          "regex": "aws\\s+route53\\s+delete-hosted-zone\\b",
+          "reason": "aws route53 delete-hosted-zone permanently deletes a Route53 hosted zone.",
+          "severity": "critical",
+          "explanation": "Deleting a hosted zone removes ALL DNS records for that domain. Services, websites, and email that depend on these records will become unreachable. The zone must be empty (except NS/SOA) before AWS allows deletion.\n\nSafer alternatives:\n- aws route53 list-resource-record-sets to review records first\n- Export zone to file before deletion\n- Delete individual records instead of the entire zone"
+        },
+        {
+          "name": "route53-change-resource-record-sets-delete",
+          "regex": "aws\\s+route53\\s+change-resource-record-sets\\b.*\\bDELETE\\b",
+          "reason": "aws route53 change-resource-record-sets with DELETE removes DNS records.",
+          "severity": "high",
+          "explanation": "DELETE actions in change-resource-record-sets immediately remove DNS records. DNS caching may provide brief respite, but resolvers will fail to reach your services once caches expire (often within minutes for low TTL records).\n\nSafer alternatives:\n- Use UPSERT action to modify rather than delete and recreate\n- Test changes in a non-production hosted zone first\n- Use aws route53 list-resource-record-sets to verify record state"
+        },
+        {
+          "name": "route53-delete-health-check",
+          "regex": "aws\\s+route53\\s+delete-health-check\\b",
+          "reason": "aws route53 delete-health-check permanently deletes a Route53 health check.",
+          "severity": "high",
+          "explanation": "Deleting a health check can disrupt DNS failover. If records reference this health check, Route53 may route traffic to unhealthy endpoints or stop failover entirely, causing outages.\n\nSafer alternatives:\n- aws route53 get-health-check to review configuration first\n- Check which records use this health check before deletion\n- Update dependent records to use a different health check first"
+        },
+        {
+          "name": "route53-delete-query-logging-config",
+          "regex": "aws\\s+route53\\s+delete-query-logging-config\\b",
+          "reason": "aws route53 delete-query-logging-config removes a Route53 query logging configuration.",
+          "severity": "medium",
+          "explanation": "Deleting query logging stops DNS query visibility for that hosted zone. This can impact debugging, security monitoring, and compliance auditing. Historical logs in CloudWatch remain, but new queries will not be logged.\n\nSafer alternatives:\n- aws route53 get-query-logging-config to review before deletion\n- Disable logging temporarily by updating the config instead\n- Ensure CloudWatch log retention meets compliance needs"
+        },
+        {
+          "name": "route53-delete-traffic-policy",
+          "regex": "aws\\s+route53\\s+delete-traffic-policy\\b",
+          "reason": "aws route53 delete-traffic-policy permanently deletes a Route53 traffic policy.",
+          "severity": "high",
+          "explanation": "Deleting a traffic policy removes the routing logic. Policy instances (applied to hosted zones) will fail to update or may stop working. This can disrupt geo-routing, latency-based routing, or weighted distributions.\n\nSafer alternatives:\n- aws route53 list-traffic-policy-instances to check usage first\n- Create a new policy version instead of deleting\n- Delete policy instances before deleting the policy itself"
+        },
+        {
+          "name": "route53-delete-reusable-delegation-set",
+          "regex": "aws\\s+route53\\s+delete-reusable-delegation-set\\b",
+          "reason": "aws route53 delete-reusable-delegation-set permanently deletes a reusable delegation set.",
+          "severity": "high",
+          "explanation": "Deleting a reusable delegation set affects all hosted zones using it. If domain registrars point to these name servers, DNS resolution will fail for all associated domains until registrar records are updated.\n\nSafer alternatives:\n- Check which hosted zones use this delegation set first\n- Migrate zones to a different delegation set before deletion\n- Update domain registrar NS records after any changes"
+        }
+      ]
+    },
+    {
+      "id": "dns.generic",
+      "name": "Generic DNS Tools",
+      "description": "Protects against destructive or risky DNS tooling usage (nsupdate deletes, zone transfers).",
+      "keywords": [
+        "nsupdate",
+        "dig",
+        "host",
+        "nslookup"
+      ],
+      "safe_patterns": [
+        {
+          "name": "dns-dig-safe",
+          "regex": "\\bdig\\b(?!.*\\baxfr\\b)(?!.*\\bixfr\\b)"
+        },
+        {
+          "name": "dns-host-safe",
+          "regex": "\\bhost\\b"
+        },
+        {
+          "name": "dns-nslookup-safe",
+          "regex": "\\bnslookup\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "dns-nsupdate-delete",
+          "regex": "(?:\\bnsupdate\\b.*\\bdelete\\b|\\bdelete\\b.*\\|\\s*\\bnsupdate\\b)",
+          "reason": "nsupdate delete commands remove DNS records.",
+          "severity": "high",
+          "explanation": "nsupdate delete removes DNS records from the authoritative server using dynamic DNS updates (RFC 2136). Changes take effect immediately and can break services relying on those records.\n\nSafer alternatives:\n- Test in a non-production zone first\n- Use 'prereq' commands to verify record state before delete\n- Keep backup of zone file or export current records"
+        },
+        {
+          "name": "dns-nsupdate-local",
+          "regex": "\\bnsupdate\\b.*\\s-l\\b",
+          "reason": "nsupdate -l applies local updates which can modify DNS records.",
+          "severity": "medium",
+          "explanation": "nsupdate -l uses local (loopback) TSIG authentication, allowing DNS modifications without network credentials. This is convenient for local testing but can accidentally modify production DNS if run on the wrong server.\n\nSafer alternatives:\n- Verify you are on the intended server before running\n- Use explicit server and key options for clarity\n- Test changes with 'show' before 'send'"
+        },
+        {
+          "name": "dns-dig-zone-transfer",
+          "regex": "\\bdig\\b.*\\b(?:axfr|ixfr)\\b",
+          "reason": "dig AXFR/IXFR zone transfers can exfiltrate full zone data.",
+          "severity": "medium",
+          "explanation": "Zone transfers (AXFR/IXFR) download complete DNS zone data, revealing all hostnames, internal IPs, and infrastructure topology. This information aids reconnaissance for attacks. Most zones should restrict transfers to known secondary servers.\n\nSafer alternatives:\n- Use standard dig queries for specific records\n- Request zone transfer permissions through proper channels\n- Check if zone transfer is authorized for your IP"
+        }
+      ]
+    }
+  ]
+}

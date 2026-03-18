@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TW Pattern Pack Category",
+  "description": "A category file containing one or more TW pattern packs.",
+  "type": "object",
+  "required": ["category", "packs"],
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "type": "string",
+      "description": "Category name. Every pack ID in this file should start with this prefix.",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "packs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pack" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "pack": {
+      "type": "object",
+      "required": ["id", "name", "description", "keywords", "safe_patterns", "destructive_patterns"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Dot-namespaced pack identifier, e.g. 'database.postgresql'."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable display name.",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "One-sentence summary of what the pack protects against."
+        },
+        "keywords": {
+          "type": "array",
+          "description": "Trigger tokens for quick-reject matching.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "safe_patterns": {
+          "type": "array",
+          "description": "Allowlist regexes. A match bypasses all destructive checks for this pack.",
+          "items": { "$ref": "#/$defs/safe_pattern" }
+        },
+        "destructive_patterns": {
+          "type": "array",
+          "description": "Blocklist regexes. Evaluated in order; first match wins.",
+          "items": { "$ref": "#/$defs/destructive_pattern" }
+        }
+      }
+    },
+    "safe_pattern": {
+      "type": "object",
+      "required": ["name", "regex"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "regex": { "type": "string", "minLength": 1 }
+      }
+    },
+    "destructive_pattern": {
+      "type": "object",
+      "required": ["name", "regex", "reason", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "regex": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "explanation": { "type": "string" },
+        "suggestions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/suggestion" }
+        }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "required": ["command", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "platform": {
+          "type": "string",
+          "enum": ["all", "linux", "macos", "windows", "bsd"],
+          "default": "all"
+        }
+      }
+    }
+  }
+}
