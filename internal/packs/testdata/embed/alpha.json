@@ -1,0 +1,20 @@
+{
+  "category": "alpha",
+  "packs": [
+    {
+      "id": "alpha.one",
+      "name": "Alpha One",
+      "description": "embedded alpha pack",
+      "keywords": ["alpha"],
+      "safe_patterns": [],
+      "destructive_patterns": [
+        {
+          "name": "alpha-block",
+          "regex": "^alpha dangerous$",
+          "reason": "alpha block",
+          "severity": "high"
+        }
+      ]
+    }
+  ]
+}

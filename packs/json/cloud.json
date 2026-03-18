@@ -1,0 +1,592 @@
+{
+  "category": "cloud",
+  "packs": [
+    {
+      "id": "cloud.aws",
+      "name": "AWS CLI",
+      "description": "Protects against destructive AWS CLI operations like terminate-instances, delete-db-instance, and s3 rm --recursive",
+      "keywords": [
+        "aws",
+        "terminate",
+        "delete",
+        "s3",
+        "ec2",
+        "rds",
+        "ecr",
+        "logs",
+        "sync"
+      ],
+      "safe_patterns": [
+        {
+          "name": "aws-describe",
+          "regex": "aws\\s+\\S+\\s+describe-"
+        },
+        {
+          "name": "aws-list",
+          "regex": "aws\\s+\\S+\\s+list-"
+        },
+        {
+          "name": "aws-get",
+          "regex": "aws\\s+\\S+\\s+get-"
+        },
+        {
+          "name": "s3-ls",
+          "regex": "aws\\s+s3\\s+ls"
+        },
+        {
+          "name": "s3-cp",
+          "regex": "aws\\s+s3\\s+cp"
+        },
+        {
+          "name": "aws-dry-run",
+          "regex": "aws\\s+.*--dry-run"
+        },
+        {
+          "name": "sts-identity",
+          "regex": "aws\\s+sts\\s+get-caller-identity"
+        },
+        {
+          "name": "cfn-describe",
+          "regex": "aws\\s+cloudformation\\s+(?:describe|list)-"
+        },
+        {
+          "name": "ecr-login",
+          "regex": "aws\\s+ecr\\s+get-login"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "ec2-terminate",
+          "regex": "aws\\s+ec2\\s+terminate-instances",
+          "reason": "aws ec2 terminate-instances permanently destroys EC2 instances.",
+          "severity": "critical",
+          "explanation": "terminate-instances permanently destroys EC2 instances:\n\n- Instance is stopped and deleted\n- Instance store volumes are lost\n- EBS root volumes deleted (unless DeleteOnTermination=false)\n- Elastic IPs are disassociated\n\nThis cannot be undone. The instance ID will never be reusable.\n\nPreview first:\n  aws ec2 describe-instances --instance-ids i-xxx\n\nConsider stop instead:\n  aws ec2 stop-instances --instance-ids i-xxx"
+        },
+        {
+          "name": "removes AWS resources",
+          "regex": "aws\\s+ec2\\s+delete-(?:snapshot|volume|vpc|subnet|security-group|key-pair|image)",
+          "reason": "aws ec2 delete-* permanently removes AWS resources.",
+          "severity": "high",
+          "explanation": "EC2 delete commands permanently remove resources:\n\n- delete-snapshot: Removes EBS snapshot (backup data lost)\n- delete-volume: Destroys EBS volume and all data\n- delete-vpc: Removes VPC (must be empty)\n- delete-image: Deregisters AMI\n- delete-security-group: Removes firewall rules\n- delete-key-pair: Removes SSH key (can't SSH to instances using it)\n\nAlways verify resource IDs:\n  aws ec2 describe-<resource> --<resource>-ids xxx"
+        },
+        {
+          "name": "s3-rm-recursive",
+          "regex": "aws\\s+s3\\s+rm\\s+.*--recursive",
+          "reason": "aws s3 rm --recursive permanently deletes all objects in the path.",
+          "severity": "critical",
+          "explanation": "s3 rm --recursive deletes ALL objects under the specified path:\n\n- All files and 'folders' are deleted\n- Versioned objects: only current version deleted\n- No trash/recycle bin\n- Cannot be undone (unless versioning enabled)\n\nPreview what would be deleted:\n  aws s3 ls s3://bucket/path/ --recursive\n  aws s3 rm s3://bucket/path/ --recursive --dryrun\n\nConsider versioning for recovery:\n  aws s3api list-object-versions --bucket bucket"
+        },
+        {
+          "name": "s3-sync-delete",
+          "regex": "aws\\s+s3\\s+sync\\s+.*--delete",
+          "reason": "aws s3 sync --delete removes files from the destination not present in the source.",
+          "severity": "high",
+          "explanation": "s3 sync --delete synchronizes the destination with the source and DELETES files from the destination that don't exist in the source:\n\n- Files unique to the destination are permanently deleted\n- Wrong source/dest order can wipe out the destination\n- No trash or undo mechanism\n\nPreview what would change:\n  aws s3 sync s3://source/ s3://dest/ --delete --dryrun\n\nConsider syncing without --delete:\n  aws s3 sync s3://source/ s3://dest/",
+          "suggestions": [
+            {
+              "command": "aws s3 sync {source} {dest} --delete --dryrun",
+              "description": "Preview what would be synced and deleted without making changes"
+            },
+            {
+              "command": "aws s3 sync {source} {dest}",
+              "description": "Sync without --delete: only adds/updates, never removes"
+            },
+            {
+              "command": "aws s3 ls {dest} --recursive --summarize",
+              "description": "Review destination contents before syncing"
+            }
+          ]
+        },
+        {
+          "name": "s3-rb",
+          "regex": "aws\\s+s3\\s+rb\\b",
+          "reason": "aws s3 rb removes the entire S3 bucket.",
+          "severity": "critical",
+          "explanation": "s3 rb removes an S3 bucket:\n\n- Bucket must be empty (use --force to delete contents first)\n- With --force: deletes all objects then bucket\n- Bucket name becomes available for others\n- Cannot be undone\n\nCheck bucket contents:\n  aws s3 ls s3://bucket --recursive --summarize\n\nVerify bucket name:\n  aws s3api head-bucket --bucket bucket-name"
+        },
+        {
+          "name": "s3api-delete-bucket",
+          "regex": "aws\\s+s3api\\s+delete-bucket",
+          "reason": "aws s3api delete-bucket removes the entire S3 bucket.",
+          "severity": "critical",
+          "explanation": "s3api delete-bucket removes a bucket (must be empty):\n\n- Returns error if bucket not empty\n- Bucket name released for reuse by anyone\n- Associated policies and configurations lost\n\nEmpty bucket first if needed:\n  aws s3 rm s3://bucket --recursive\n\nOr use s3 rb --force for both operations."
+        },
+        {
+          "name": "rds-delete",
+          "regex": "aws\\s+rds\\s+delete-db-(?:instance|cluster|snapshot|cluster-snapshot)",
+          "reason": "aws rds delete-db-instance/cluster permanently destroys the database.",
+          "severity": "critical",
+          "explanation": "RDS delete commands permanently remove database resources:\n\n- delete-db-instance: Destroys the database instance\n- delete-db-cluster: Destroys Aurora cluster\n- delete-db-snapshot: Removes backup\n- delete-db-cluster-snapshot: Removes cluster backup\n\nConsider:\n- Create final snapshot before deletion\n- Skip final snapshot only for test instances\n\nCreate backup:\n  aws rds create-db-snapshot --db-instance-id xxx --db-snapshot-id backup"
+        },
+        {
+          "name": "cfn-delete-stack",
+          "regex": "aws\\s+cloudformation\\s+delete-stack",
+          "reason": "aws cloudformation delete-stack removes the entire stack and its resources.",
+          "severity": "critical",
+          "explanation": "CloudFormation delete-stack removes the stack AND all resources it created:\n\n- EC2 instances terminated\n- RDS databases deleted (unless DeletionPolicy: Retain)\n- S3 buckets removed (if empty)\n- All IAM resources deleted\n\nResources with DeletionPolicy: Retain are kept but orphaned.\n\nPreview resources:\n  aws cloudformation describe-stack-resources --stack-name xxx\n\nConsider:\n  aws cloudformation delete-stack --retain-resources res1 res2"
+        },
+        {
+          "name": "lambda-delete",
+          "regex": "aws\\s+lambda\\s+delete-function",
+          "reason": "aws lambda delete-function permanently removes the Lambda function.",
+          "severity": "high",
+          "explanation": "delete-function removes a Lambda function completely:\n\n- Function code is deleted\n- All versions and aliases removed\n- Event source mappings deleted\n- Cannot be undone\n\nBackup function code first:\n  aws lambda get-function --function-name xxx --query Code.Location\n\nList versions:\n  aws lambda list-versions-by-function --function-name xxx"
+        },
+        {
+          "name": "iam-delete",
+          "regex": "aws\\s+iam\\s+delete-(?:user|role|policy|group)",
+          "reason": "aws iam delete-* removes IAM resources. Verify dependencies first.",
+          "severity": "high",
+          "explanation": "IAM delete commands remove identity resources:\n\n- delete-user: Removes IAM user (must detach policies first)\n- delete-role: Removes role (must detach policies first)\n- delete-policy: Removes managed policy\n- delete-group: Removes IAM group\n\nCheck dependencies:\n  aws iam list-attached-user-policies --user-name xxx\n  aws iam list-entities-for-policy --policy-arn xxx\n\nRoles used by services (Lambda, EC2) will break!"
+        },
+        {
+          "name": "dynamodb-delete",
+          "regex": "aws\\s+dynamodb\\s+delete-table",
+          "reason": "aws dynamodb delete-table permanently deletes the table and all data.",
+          "severity": "critical",
+          "explanation": "delete-table removes a DynamoDB table and ALL its data:\n\n- All items are deleted\n- Table configuration is lost\n- Global secondary indexes deleted\n- Cannot be undone\n\nBackup first:\n  aws dynamodb create-backup --table-name xxx --backup-name backup\n\nOr export to S3:\n  aws dynamodb export-table-to-point-in-time ..."
+        },
+        {
+          "name": "eks-delete",
+          "regex": "aws\\s+eks\\s+delete-cluster",
+          "reason": "aws eks delete-cluster removes the entire EKS cluster.",
+          "severity": "critical",
+          "explanation": "delete-cluster removes an EKS cluster:\n\n- Control plane is deleted\n- Node groups must be deleted separately first\n- Kubernetes resources (deployments, services) are lost\n- Persistent volumes may remain as orphaned EBS\n\nDelete node groups first:\n  aws eks list-nodegroups --cluster-name xxx\n  aws eks delete-nodegroup --cluster-name xxx --nodegroup-name yyy\n\nThen delete cluster."
+        },
+        {
+          "name": "ecr-delete-repository",
+          "regex": "aws\\s+ecr\\s+delete-repository",
+          "reason": "aws ecr delete-repository permanently deletes the repository and its images.",
+          "severity": "high",
+          "explanation": "delete-repository removes an ECR repository:\n\n- All images in the repository are deleted\n- Repository configuration lost\n- Requires --force if repository not empty\n\nList images first:\n  aws ecr list-images --repository-name xxx\n\nConsider keeping critical images:\n  docker pull <account>.dkr.ecr.<region>.amazonaws.com/repo:tag"
+        },
+        {
+          "name": "ecr-batch-delete-image",
+          "regex": "aws\\s+ecr\\s+batch-delete-image",
+          "reason": "aws ecr batch-delete-image permanently deletes one or more images.",
+          "severity": "high",
+          "explanation": "batch-delete-image removes specific images from ECR:\n\n- Images are permanently deleted\n- Can delete by tag or digest\n- Running containers using these images may fail on restart\n\nList images:\n  aws ecr describe-images --repository-name xxx\n\nVerify image usage before deletion."
+        },
+        {
+          "name": "ecr-delete-lifecycle-policy",
+          "regex": "aws\\s+ecr\\s+delete-lifecycle-policy",
+          "reason": "aws ecr delete-lifecycle-policy removes the repository lifecycle policy.",
+          "severity": "medium",
+          "explanation": "delete-lifecycle-policy removes automatic image cleanup rules:\n\n- Old images will no longer be automatically deleted\n- May lead to storage cost increases\n- Repository will retain all images indefinitely\n\nView current policy:\n  aws ecr get-lifecycle-policy --repository-name xxx"
+        },
+        {
+          "name": "logs-delete-log-group",
+          "regex": "aws\\s+logs\\s+delete-log-group",
+          "reason": "aws logs delete-log-group permanently deletes a log group and all events.",
+          "severity": "high",
+          "explanation": "delete-log-group removes a CloudWatch log group:\n\n- All log streams are deleted\n- All log events are lost\n- Metric filters and subscriptions removed\n- Cannot be undone\n\nExport logs before deletion:\n  aws logs create-export-task --log-group-name xxx \\\n    --destination bucket --from 0 --to $(date +%s)000"
+        },
+        {
+          "name": "logs-delete-log-stream",
+          "regex": "aws\\s+logs\\s+delete-log-stream",
+          "reason": "aws logs delete-log-stream permanently deletes a log stream and all events.",
+          "severity": "high",
+          "explanation": "delete-log-stream removes a specific log stream:\n\n- All events in the stream are deleted\n- Log group remains intact\n- Cannot be undone\n\nView log stream events before deletion:\n  aws logs get-log-events --log-group-name xxx \\\n    --log-stream-name yyy --limit 100"
+        }
+      ]
+    },
+    {
+      "id": "cloud.gcp",
+      "name": "Google Cloud SDK",
+      "description": "Protects against destructive gcloud operations like instances delete, sql instances delete, and gsutil rm -r",
+      "keywords": [
+        "gcloud",
+        "gsutil",
+        "delete",
+        "instances",
+        "artifacts",
+        "images",
+        "repositories"
+      ],
+      "safe_patterns": [
+        {
+          "name": "gcloud-describe",
+          "regex": "gcloud\\s+\\S+\\s+\\S+\\s+describe"
+        },
+        {
+          "name": "gcloud-list",
+          "regex": "gcloud\\s+\\S+\\s+\\S+\\s+list"
+        },
+        {
+          "name": "gsutil-ls",
+          "regex": "gsutil\\s+ls"
+        },
+        {
+          "name": "gsutil-cp",
+          "regex": "gsutil\\s+cp"
+        },
+        {
+          "name": "gcloud-config",
+          "regex": "gcloud\\s+config"
+        },
+        {
+          "name": "gcloud-auth",
+          "regex": "gcloud\\s+auth"
+        },
+        {
+          "name": "gcloud-info",
+          "regex": "gcloud\\s+info"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "compute-delete",
+          "regex": "gcloud\\s+compute\\s+instances\\s+delete",
+          "reason": "gcloud compute instances delete permanently destroys VM instances.",
+          "severity": "critical",
+          "explanation": "compute instances delete permanently destroys VMs:\n\n- Instance is stopped and deleted\n- Boot disk deleted (unless --keep-disks specified)\n- External IPs released back to pool\n- Instance metadata and logs lost\n\nUse --keep-disks=boot,data to preserve disks for recovery."
+        },
+        {
+          "name": "disk-delete",
+          "regex": "gcloud\\s+compute\\s+disks\\s+delete",
+          "reason": "gcloud compute disks delete permanently destroys disk data.",
+          "severity": "critical",
+          "explanation": "compute disks delete permanently destroys persistent disks:\n\n- All data on the disk is lost forever\n- Cannot be recovered without snapshots\n- Any instances using the disk will fail\n\nCreate a snapshot before deletion: gcloud compute disks snapshot DISK"
+        },
+        {
+          "name": "sql-delete",
+          "regex": "gcloud\\s+sql\\s+instances\\s+delete",
+          "reason": "gcloud sql instances delete permanently destroys the Cloud SQL instance.",
+          "severity": "critical",
+          "explanation": "sql instances delete permanently destroys Cloud SQL:\n\n- Database and all data deleted\n- All backups deleted (unless retained)\n- Read replicas also deleted\n- IP addresses released\n\nExport data first: gcloud sql export sql INSTANCE gs://bucket/file.sql"
+        },
+        {
+          "name": "gsutil-rm-recursive",
+          "regex": "gsutil\\s+(?:-m\\s+)?rm\\s+.*-r|gsutil\\s+(?:-m\\s+)?rm\\s+-[a-z]*r",
+          "reason": "gsutil rm -r permanently deletes all objects in the path.",
+          "severity": "critical",
+          "explanation": "gsutil rm -r recursively deletes all objects:\n\n- All objects under the path are deleted\n- Cannot be recovered without versioning enabled\n- -m flag parallelizes (faster but same risk)\n\nList first: gsutil ls -r gs://bucket/path/\nEnable versioning: gsutil versioning set on gs://bucket"
+        },
+        {
+          "name": "gsutil-rb",
+          "regex": "gsutil\\s+rb\\b",
+          "reason": "gsutil rb removes the entire GCS bucket.",
+          "severity": "critical",
+          "explanation": "gsutil rb removes the entire Cloud Storage bucket:\n\n- Bucket must be empty (or use -f to force)\n- Bucket name becomes available to others\n- All bucket-level permissions lost\n\nList contents first: gsutil ls gs://bucket/"
+        },
+        {
+          "name": "gke-delete",
+          "regex": "gcloud\\s+container\\s+clusters\\s+delete",
+          "reason": "gcloud container clusters delete removes the entire GKE cluster.",
+          "severity": "critical",
+          "explanation": "container clusters delete removes the entire GKE cluster:\n\n- All nodes and workloads terminated\n- Persistent volumes may be deleted\n- Load balancers and IPs released\n- Cluster-level secrets lost\n\nBackup workloads: kubectl get all -A -o yaml > backup.yaml"
+        },
+        {
+          "name": "project-delete",
+          "regex": "gcloud\\s+projects\\s+delete",
+          "reason": "gcloud projects delete removes the entire GCP project and ALL its resources!",
+          "severity": "critical",
+          "explanation": "projects delete removes the ENTIRE GCP project:\n\n- ALL resources in the project deleted\n- All VMs, databases, storage, functions\n- All IAM policies and service accounts\n- 30-day recovery window, then permanent\n\nThis is the most destructive GCP command possible!"
+        },
+        {
+          "name": "functions-delete",
+          "regex": "gcloud\\s+functions\\s+delete",
+          "reason": "gcloud functions delete removes the Cloud Function.",
+          "severity": "high",
+          "explanation": "functions delete removes Cloud Functions:\n\n- Function code and configuration deleted\n- Triggers and event subscriptions removed\n- Function URL becomes unavailable\n\nExport source first if not in version control."
+        },
+        {
+          "name": "pubsub-delete",
+          "regex": "gcloud\\s+pubsub\\s+(?:topics|subscriptions)\\s+delete",
+          "reason": "gcloud pubsub delete removes Pub/Sub topics or subscriptions.",
+          "severity": "high",
+          "explanation": "pubsub delete removes messaging infrastructure:\n\n- Topic deletion removes all subscriptions\n- Unacknowledged messages are lost\n- Publishers will fail until recreated\n\nCheck subscribers: gcloud pubsub topics list-subscriptions TOPIC"
+        },
+        {
+          "name": "firestore-delete",
+          "regex": "gcloud\\s+firestore\\s+.*delete",
+          "reason": "gcloud firestore delete removes Firestore data.",
+          "severity": "critical",
+          "explanation": "firestore delete removes Firestore documents:\n\n- Documents and collections deleted\n- Subcollections may remain (delete recursively)\n- No automatic backups by default\n\nExport first: gcloud firestore export gs://bucket/backup"
+        },
+        {
+          "name": "container-images-delete",
+          "regex": "gcloud\\s+container\\s+images\\s+delete",
+          "reason": "gcloud container images delete permanently deletes container images.",
+          "severity": "high",
+          "explanation": "container images delete removes images from GCR:\n\n- Image tags and digests deleted\n- Running containers unaffected (cached)\n- New pulls will fail\n\nList tags first: gcloud container images list-tags IMAGE"
+        },
+        {
+          "name": "artifacts-docker-images-delete",
+          "regex": "gcloud\\s+artifacts\\s+docker\\s+images\\s+delete",
+          "reason": "gcloud artifacts docker images delete permanently deletes container images.",
+          "severity": "high",
+          "explanation": "artifacts docker images delete removes images from Artifact Registry:\n\n- Specified image version deleted\n- Other tags pointing to same digest unaffected\n- Consider cleanup policies instead\n\nList versions: gcloud artifacts docker images list REPO"
+        },
+        {
+          "name": "artifacts-repositories-delete",
+          "regex": "gcloud\\s+artifacts\\s+repositories\\s+delete",
+          "reason": "gcloud artifacts repositories delete permanently deletes the repository.",
+          "severity": "critical",
+          "explanation": "artifacts repositories delete removes entire repository:\n\n- All packages/images in repository deleted\n- Repository configuration lost\n- IAM policies on repository removed\n\nList contents: gcloud artifacts packages list --repository=REPO"
+        }
+      ]
+    },
+    {
+      "id": "cloud.azure",
+      "name": "Azure CLI",
+      "description": "Protects against destructive Azure CLI operations like vm delete, storage account delete, and resource group delete",
+      "keywords": [
+        "az",
+        "delete",
+        "vm",
+        "storage",
+        "acr",
+        "registry"
+      ],
+      "safe_patterns": [
+        {
+          "name": "az-show",
+          "regex": "az\\s+\\S+\\s+show"
+        },
+        {
+          "name": "az-list",
+          "regex": "az\\s+\\S+\\s+list"
+        },
+        {
+          "name": "az-account",
+          "regex": "az\\s+account"
+        },
+        {
+          "name": "az-configure",
+          "regex": "az\\s+configure"
+        },
+        {
+          "name": "az-login",
+          "regex": "az\\s+login"
+        },
+        {
+          "name": "az-version",
+          "regex": "az\\s+version"
+        },
+        {
+          "name": "az-help",
+          "regex": "az\\s+.*--help"
+        },
+        {
+          "name": "az-what-if",
+          "regex": "az\\s+.*--what-if"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "vm-delete",
+          "regex": "az\\s+vm\\s+delete",
+          "reason": "az vm delete permanently destroys virtual machines.",
+          "severity": "critical",
+          "explanation": "vm delete permanently destroys Azure VMs:\n\n- VM is deallocated and deleted\n- OS disk deleted (unless --os-disk=detach)\n- Data disks detached but not deleted\n- Public IP released\n\nPreserve disks: az vm delete --os-disk detach --data-disks detach"
+        },
+        {
+          "name": "storage-delete",
+          "regex": "az\\s+storage\\s+account\\s+delete",
+          "reason": "az storage account delete permanently destroys the storage account and all data.",
+          "severity": "critical",
+          "explanation": "storage account delete destroys entire storage account:\n\n- ALL blobs, files, queues, tables deleted\n- All containers and their contents gone\n- Cannot be recovered without backups\n\nList contents first: az storage container list --account-name NAME"
+        },
+        {
+          "name": "blob-delete",
+          "regex": "az\\s+storage\\s+(?:blob|container)\\s+delete",
+          "reason": "az storage blob/container delete permanently removes data.",
+          "severity": "high",
+          "explanation": "storage blob/container delete removes data:\n\n- Blob delete removes individual blobs\n- Container delete removes container and ALL blobs\n- Soft delete may allow recovery if enabled\n\nCheck soft delete: az storage account show --name NAME --query blobServiceProperties"
+        },
+        {
+          "name": "sql-delete",
+          "regex": "az\\s+sql\\s+(?:server|db)\\s+delete",
+          "reason": "az sql server/db delete permanently destroys the database.",
+          "severity": "critical",
+          "explanation": "sql server/db delete destroys databases:\n\n- Server delete removes ALL databases on server\n- Database delete removes specific database\n- Point-in-time restore possible within retention period\n\nCreate backup: az sql db export --name DB --server SRV --storage-uri URI"
+        },
+        {
+          "name": "group-delete",
+          "regex": "az\\s+group\\s+delete",
+          "reason": "az group delete removes the entire resource group and ALL resources within it!",
+          "severity": "critical",
+          "explanation": "group delete removes ENTIRE resource group:\n\n- ALL resources in the group deleted\n- VMs, storage, databases, networks - everything\n- Cannot be undone\n- --no-wait returns immediately (deletion continues)\n\nThis is one of the most destructive Azure commands!"
+        },
+        {
+          "name": "aks-delete",
+          "regex": "az\\s+aks\\s+delete",
+          "reason": "az aks delete removes the entire AKS cluster.",
+          "severity": "critical",
+          "explanation": "aks delete removes the entire Kubernetes cluster:\n\n- All nodes and workloads terminated\n- Persistent volumes may be deleted\n- Load balancers and IPs released\n- Node resource group also deleted\n\nBackup workloads: kubectl get all -A -o yaml > backup.yaml"
+        },
+        {
+          "name": "webapp-delete",
+          "regex": "az\\s+webapp\\s+delete",
+          "reason": "az webapp delete removes the App Service.",
+          "severity": "high",
+          "explanation": "webapp delete removes App Service:\n\n- Application code and configuration deleted\n- Custom domain mappings removed\n- SSL certificates may be deleted\n- Deployment slots also deleted\n\nBackup config: az webapp config show --name NAME -g RG"
+        },
+        {
+          "name": "functionapp-delete",
+          "regex": "az\\s+functionapp\\s+delete",
+          "reason": "az functionapp delete removes the Azure Function App.",
+          "severity": "high",
+          "explanation": "functionapp delete removes Azure Functions:\n\n- All functions and configuration deleted\n- Triggers and bindings removed\n- Function keys lost\n- Associated storage may be affected\n\nExport functions if not in version control."
+        },
+        {
+          "name": "cosmosdb-delete",
+          "regex": "az\\s+cosmosdb\\s+(?:delete|database\\s+delete|collection\\s+delete)",
+          "reason": "az cosmosdb delete permanently destroys the Cosmos DB resource.",
+          "severity": "critical",
+          "explanation": "cosmosdb delete destroys Cosmos DB resources:\n\n- Account delete removes entire Cosmos DB account\n- Database delete removes database and all containers\n- Collection delete removes container and data\n\nEnable point-in-time restore for recovery options."
+        },
+        {
+          "name": "keyvault-delete",
+          "regex": "az\\s+keyvault\\s+delete",
+          "reason": "az keyvault delete removes the Key Vault. Secrets may be unrecoverable.",
+          "severity": "critical",
+          "explanation": "keyvault delete removes Key Vault:\n\n- All secrets, keys, certificates deleted\n- Soft delete allows recovery (if enabled)\n- Purge protection prevents permanent deletion\n- Vault name reserved for recovery period\n\nCheck protection: az keyvault show --name NAME --query properties.enablePurgeProtection"
+        },
+        {
+          "name": "vnet-delete",
+          "regex": "az\\s+network\\s+vnet\\s+delete",
+          "reason": "az network vnet delete removes the virtual network.",
+          "severity": "high",
+          "explanation": "network vnet delete removes virtual network:\n\n- Network must be empty (no subnets in use)\n- Connected resources lose connectivity\n- Peerings to other VNets broken\n- Network security groups may remain\n\nCheck usage: az network vnet subnet list --vnet-name VNET -g RG"
+        },
+        {
+          "name": "acr-delete",
+          "regex": "az\\s+acr\\s+delete",
+          "reason": "az acr delete removes the container registry and all images.",
+          "severity": "critical",
+          "explanation": "acr delete removes entire container registry:\n\n- ALL repositories and images deleted\n- All tags and manifests gone\n- Webhooks and replications removed\n- Registry name becomes available to others\n\nList repos: az acr repository list --name REGISTRY"
+        },
+        {
+          "name": "acr-repository-delete",
+          "regex": "az\\s+acr\\s+repository\\s+delete",
+          "reason": "az acr repository delete permanently deletes the repository and its images.",
+          "severity": "high",
+          "explanation": "acr repository delete removes repository:\n\n- All tags and images in repository deleted\n- Running containers unaffected (cached)\n- New pulls will fail\n\nList tags: az acr repository show-tags --name REG --repository REPO"
+        },
+        {
+          "name": "acr-repository-untag",
+          "regex": "az\\s+acr\\s+repository\\s+untag",
+          "reason": "az acr repository untag removes tags from images.",
+          "severity": "medium",
+          "explanation": "acr repository untag removes image tags:\n\n- Tag removed from manifest\n- Image still exists if other tags reference it\n- Untagged images may be garbage collected\n\nLower risk: manifests can be re-tagged if digest known."
+        }
+      ]
+    },
+    {
+      "id": "cloud.digitalocean",
+      "name": "DigitalOcean",
+      "description": "Protects against destructive DigitalOcean operations like droplet deletion",
+      "keywords": [
+        "doctl",
+        "droplet",
+        "delete"
+      ],
+      "safe_patterns": [
+        {
+          "name": "doctl-list",
+          "regex": "(?i)doctl\\s+.*list"
+        },
+        {
+          "name": "doctl-get",
+          "regex": "(?i)doctl\\s+.*get"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "droplet-delete",
+          "regex": "(?i)doctl\\s+compute\\s+droplet\\s+delete",
+          "reason": "droplet delete permanently removes the droplet and its data.",
+          "severity": "critical",
+          "explanation": "Deleting a droplet permanently destroys the virtual machine and its local data:\n\n- All data on the droplet is lost\n- The IP address may be released\n- Cannot be undone unless a snapshot or backup exists\n\nVerify the droplet ID or name before deleting:\n  doctl compute droplet list\n\nTake a snapshot first:\n  doctl compute droplet-action snapshot <droplet_id>"
+        }
+      ]
+    },
+    {
+      "id": "cloud.heroku",
+      "name": "Heroku",
+      "description": "Protects against destructive Heroku operations like apps:destroy",
+      "keywords": [
+        "heroku",
+        "apps:destroy"
+      ],
+      "safe_patterns": [
+        {
+          "name": "heroku-list",
+          "regex": "(?i)heroku\\s+apps$"
+        },
+        {
+          "name": "heroku-info",
+          "regex": "(?i)heroku\\s+apps:info"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "apps-destroy",
+          "regex": "(?i)heroku\\s+apps:destroy",
+          "reason": "apps:destroy permanently deletes the app and all its resources.",
+          "severity": "critical",
+          "explanation": "Destroying a Heroku app removes the application and all its configuration:\n\n- All add-ons are removed (and their data may be deleted)\n- All environment variables (Config Vars) are lost\n- The app name is released\n- Cannot be undone\n\nVerify the app name before destroying:\n  heroku apps:info --app <app_name>\n\nCheck add-ons first:\n  heroku addons --app <app_name>"
+        }
+      ]
+    },
+    {
+      "id": "cloud.vercel",
+      "name": "Vercel",
+      "description": "Protects against destructive Vercel operations like vercel rm",
+      "keywords": [
+        "vercel",
+        "rm",
+        "remove"
+      ],
+      "safe_patterns": [
+        {
+          "name": "vercel-list",
+          "regex": "(?i)vercel\\s+ls"
+        },
+        {
+          "name": "vercel-inspect",
+          "regex": "(?i)vercel\\s+inspect"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "vercel-rm",
+          "regex": "(?i)vercel\\s+(?:rm|remove)",
+          "reason": "vercel rm permanently removes a deployment or project.",
+          "severity": "high",
+          "explanation": "Removing a Vercel project or deployment is destructive:\n\n- All associated resources and data may be deleted\n- The project name or deployment URL will no longer be available\n- Operation is irreversible\n\nVerify what you are removing first:\n  vercel ls\n\nInspect a specific deployment:\n  vercel inspect <deployment_url>"
+        }
+      ]
+    },
+    {
+      "id": "cloud.netlify",
+      "name": "Netlify",
+      "description": "Protects against destructive Netlify operations like sites:delete",
+      "keywords": [
+        "netlify",
+        "sites:delete"
+      ],
+      "safe_patterns": [
+        {
+          "name": "netlify-list",
+          "regex": "(?i)netlify\\s+sites:list"
+        },
+        {
+          "name": "netlify-status",
+          "regex": "(?i)netlify\\s+status"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "sites-delete",
+          "regex": "(?i)netlify\\s+sites:delete",
+          "reason": "sites:delete permanently deletes a Netlify site.",
+          "severity": "critical",
+          "explanation": "Deleting a Netlify site removes the site and all its deployments:\n\n- All associated resources and site settings are lost\n- The site ID is released\n- Cannot be undone\n\nVerify the site ID or name before deleting:\n  netlify sites:list\n\nCheck site details:\n  netlify sites:get --site <site_id>"
+        }
+      ]
+    }
+  ]
+}

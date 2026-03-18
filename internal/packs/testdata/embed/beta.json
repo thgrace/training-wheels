@@ -1,0 +1,20 @@
+{
+  "category": "beta",
+  "packs": [
+    {
+      "id": "beta.one",
+      "name": "Beta One",
+      "description": "embedded beta pack",
+      "keywords": ["beta"],
+      "safe_patterns": [],
+      "destructive_patterns": [
+        {
+          "name": "beta-block",
+          "regex": "^beta dangerous$",
+          "reason": "beta block",
+          "severity": "medium"
+        }
+      ]
+    }
+  ]
+}
