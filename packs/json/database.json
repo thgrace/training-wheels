@@ -1,0 +1,1348 @@
+{
+  "category": "database",
+  "packs": [
+    {
+      "id": "database.postgresql",
+      "name": "PostgreSQL",
+      "description": "Protects against destructive PostgreSQL operations like DROP DATABASE, TRUNCATE, and dropdb",
+      "keywords": [
+        "psql",
+        "dropdb",
+        "DROP",
+        "TRUNCATE",
+        "pg_dump",
+        "postgres",
+        "DELETE",
+        "delete",
+        "drop",
+        "truncate"
+      ],
+      "safe_patterns": [
+        {
+          "name": "pg-dump-no-clean",
+          "regex": "pg_dump\\s+(?!.*--clean)(?!.*-c\\b)"
+        },
+        {
+          "name": "psql-dry-run",
+          "regex": "psql\\s+.*--dry-run"
+        },
+        {
+          "name": "sql-cli-select",
+          "regex": "(?i)(?:psql\\s+.*(?:-c|--command)|mysql\\s+.*(?:-e|--execute)|sqlite3\\s+[^\\s]+)\\s+['\"]?\\s*SELECT"
+        },
+        {
+          "name": "psql-select",
+          "regex": "(?i)psql\\s+.*(?:-c|--command)\\s*['\"]?\\s*SELECT"
+        },
+        {
+          "name": "select-query",
+          "regex": "(?i)^\\s*SELECT\\s+"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "drop-database",
+          "regex": "(?i)\\bDROP\\s+DATABASE\\b",
+          "reason": "DROP DATABASE permanently deletes the entire database (even with IF EXISTS). Verify and back up first.",
+          "severity": "critical",
+          "explanation": "DROP DATABASE completely removes a database and ALL its contents:\n\n- All tables, views, and indexes\n- All functions, procedures, and triggers\n- All data - gone permanently\n- Users/roles remain but lose access\n\nIF EXISTS only prevents errors if the database doesn't exist - it still deletes!\n\nBefore dropping:\n  pg_dump -h host -U user dbname > backup.sql\n\nVerify database name:\n  psql -c '\\l' | grep dbname",
+          "suggestions": [
+            {
+              "command": "pg_dump -h {host} -U {user} {dbname} > backup.sql",
+              "description": "Create a full backup before dropping"
+            },
+            {
+              "command": "psql -c '\\l' | grep {dbname}",
+              "description": "Verify database name before dropping"
+            },
+            {
+              "command": "SELECT datname FROM pg_database WHERE datname = '{dbname}'",
+              "description": "Check if database exists"
+            }
+          ]
+        },
+        {
+          "name": "drop-table",
+          "regex": "(?i)\\bDROP\\s+TABLE\\b",
+          "reason": "DROP TABLE permanently deletes the table (even with IF EXISTS). Verify and back up first.",
+          "severity": "high",
+          "explanation": "DROP TABLE removes the table structure and ALL data:\n\n- All rows are deleted\n- Indexes, constraints, triggers are removed\n- Foreign keys referencing this table may fail\n- CASCADE drops dependent objects too\n\nIF EXISTS only prevents errors - it still drops the table!\n\nBackup table first:\n  pg_dump -t tablename dbname > table_backup.sql\n\nPreview table contents:\n  SELECT COUNT(*) FROM tablename;\n  SELECT * FROM tablename LIMIT 10;",
+          "suggestions": [
+            {
+              "command": "pg_dump -t {tablename} {dbname} > table_backup.sql",
+              "description": "Backup the table before dropping"
+            },
+            {
+              "command": "SELECT COUNT(*) FROM {tablename}",
+              "description": "Check row count before dropping"
+            },
+            {
+              "command": "\\d {tablename}",
+              "description": "Review table structure (in psql)"
+            },
+            {
+              "command": "SELECT * FROM {tablename} LIMIT 10",
+              "description": "Preview table contents"
+            }
+          ]
+        },
+        {
+          "name": "drop-schema",
+          "regex": "(?i)\\bDROP\\s+SCHEMA\\b",
+          "reason": "DROP SCHEMA permanently deletes the schema and all its objects (even with IF EXISTS).",
+          "severity": "critical",
+          "explanation": "DROP SCHEMA removes a schema and potentially ALL objects within it:\n\n- With CASCADE: Drops all tables, views, functions in the schema\n- With RESTRICT (default): Fails if schema is not empty\n- public schema deletion is catastrophic\n\nList schema contents first:\n  SELECT table_name FROM information_schema.tables \n  WHERE table_schema = 'schema_name';\n\nBackup schema:\n  pg_dump -n schema_name dbname > schema_backup.sql",
+          "suggestions": [
+            {
+              "command": "pg_dump -n {schema_name} {dbname} > schema_backup.sql",
+              "description": "Backup schema before dropping"
+            },
+            {
+              "command": "SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema_name}'",
+              "description": "List all tables in the schema"
+            },
+            {
+              "command": "DROP SCHEMA {schema_name} RESTRICT",
+              "description": "Use RESTRICT to fail if schema is not empty"
+            }
+          ]
+        },
+        {
+          "name": "truncate-table",
+          "regex": "(?i)TRUNCATE\\s+(?:TABLE\\s+)?[a-zA-Z_]",
+          "reason": "TRUNCATE permanently deletes all rows without logging individual deletions.",
+          "severity": "high",
+          "explanation": "TRUNCATE is faster than DELETE but more dangerous:\n\n- Removes ALL rows instantly\n- Cannot be rolled back outside a transaction\n- Does not fire DELETE triggers\n- Resets IDENTITY/SERIAL columns\n- CASCADE truncates referencing tables too\n\nTRUNCATE is transactional in PostgreSQL. Wrap in transaction:\n  BEGIN;\n  TRUNCATE tablename;\n  -- verify, then COMMIT or ROLLBACK\n\nCheck row count first:\n  SELECT COUNT(*) FROM tablename;",
+          "suggestions": [
+            {
+              "command": "SELECT COUNT(*) FROM {tablename}",
+              "description": "Check how many rows would be deleted"
+            },
+            {
+              "command": "BEGIN; TRUNCATE {tablename}; -- ROLLBACK or COMMIT",
+              "description": "Wrap in transaction for rollback capability"
+            },
+            {
+              "command": "CREATE TABLE {tablename}_backup AS SELECT * FROM {tablename}",
+              "description": "Backup data before truncating"
+            }
+          ]
+        },
+        {
+          "name": "delete-without-where",
+          "regex": "(?i)DELETE\\s+FROM\\s+(?:(?:[a-zA-Z_][a-zA-Z0-9_]*|\"[^\"]+\")(?:\\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\"[^\"]+\"))?)\\s*(?:;|$)",
+          "reason": "DELETE without WHERE clause deletes ALL rows. Add a WHERE clause or use TRUNCATE intentionally.",
+          "severity": "high",
+          "explanation": "DELETE without WHERE removes ALL rows from the table:\n\n- Each row deletion is logged (slower than TRUNCATE)\n- Can be rolled back within a transaction\n- Fires DELETE triggers for each row\n- Does not reset IDENTITY/SERIAL counters\n\nIf you meant to delete all rows, use TRUNCATE for speed.\nOtherwise, add a WHERE clause:\n  DELETE FROM tablename WHERE condition;\n\nPreview what would be deleted:\n  SELECT COUNT(*) FROM tablename;  -- all rows!\n  SELECT * FROM tablename LIMIT 10;",
+          "suggestions": [
+            {
+              "command": "DELETE FROM {tablename} WHERE {condition}",
+              "description": "Add a WHERE clause to limit deletion"
+            },
+            {
+              "command": "SELECT COUNT(*) FROM {tablename}",
+              "description": "Check how many rows exist"
+            },
+            {
+              "command": "TRUNCATE TABLE {tablename}",
+              "description": "Use TRUNCATE if you truly want all rows deleted (faster)"
+            },
+            {
+              "command": "BEGIN; DELETE FROM {tablename}; -- ROLLBACK or COMMIT",
+              "description": "Wrap in transaction for rollback capability"
+            }
+          ]
+        },
+        {
+          "name": "dropdb-cli",
+          "regex": "dropdb\\s+",
+          "reason": "dropdb permanently deletes the entire database. Verify the database name carefully.",
+          "severity": "critical",
+          "explanation": "dropdb is the CLI equivalent of DROP DATABASE:\n\n- Completely removes the database\n- All data is lost permanently\n- No confirmation prompt by default\n- Cannot be undone\n\nTriple-check the database name. Common mistake:\n  dropdb myapp_production  # Oops, meant myapp_staging\n\nBackup first:\n  pg_dump -h host -U user dbname > backup.sql\n\nList databases to verify:\n  psql -c '\\l'",
+          "suggestions": [
+            {
+              "command": "pg_dump -h {host} -U {user} {dbname} > backup.sql",
+              "description": "Create a full backup before dropping"
+            },
+            {
+              "command": "psql -c '\\l'",
+              "description": "List databases to verify the correct one"
+            },
+            {
+              "command": "psql -c 'SELECT pg_database_size(''{dbname}'') / 1024 / 1024 AS size_mb'",
+              "description": "Check database size before dropping"
+            }
+          ]
+        },
+        {
+          "name": "pg-dump-clean",
+          "regex": "pg_dump\\s+.*(?:--clean|-c\\b)",
+          "reason": "pg_dump --clean drops objects before creating them. This can be destructive on restore.",
+          "severity": "high",
+          "explanation": "pg_dump --clean adds DROP statements to the backup file. On restore:\n\n- DROP TABLE is run before CREATE TABLE\n- Existing data is deleted before restore\n- If restore fails partway, data may be lost\n\nThis is safe for backup, but dangerous when restoring to a database with existing data you want to keep.\n\nSafer approach for restoring:\n- Restore to a new database first\n- Verify the restore\n- Then swap databases\n\nWithout --clean:\n  pg_dump dbname > backup.sql  # Creates only, no drops",
+          "suggestions": [
+            {
+              "command": "pg_dump {dbname} > backup.sql",
+              "description": "Create backup without DROP statements"
+            },
+            {
+              "command": "createdb {newdb} && pg_restore -d {newdb} backup.dump",
+              "description": "Restore to a new database first, then verify"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "database.mysql",
+      "name": "MySQL/MariaDB",
+      "description": "Protects against destructive MySQL/MariaDB operations like DROP DATABASE, TRUNCATE, and mysqladmin drop",
+      "keywords": [
+        "mysql",
+        "mysqladmin",
+        "mysqldump",
+        "mariadb",
+        "DROP",
+        "TRUNCATE",
+        "DELETE",
+        "delete",
+        "drop",
+        "truncate",
+        "GRANT"
+      ],
+      "safe_patterns": [
+        {
+          "name": "select-query",
+          "regex": "(?i)^\\s*SELECT\\s+"
+        },
+        {
+          "name": "show-command",
+          "regex": "(?i)^\\s*SHOW\\s+"
+        },
+        {
+          "name": "describe-query",
+          "regex": "(?i)^\\s*(?:DESCRIBE|DESC|EXPLAIN)\\s+"
+        },
+        {
+          "name": "sql-cli-select",
+          "regex": "(?i)(?:psql\\s+.*(?:-c|--command)|mysql\\s+.*(?:-e|--execute)|sqlite3\\s+[^\\s]+)\\s+['\"]?\\s*SELECT"
+        },
+        {
+          "name": "mysqldump-no-drop",
+          "regex": "mysqldump\\s+(?!.*--add-drop-database)(?!.*--add-drop-table)"
+        },
+        {
+          "name": "mysql-select",
+          "regex": "mysql\\s+.*(?:-e|--execute)\\s*['\"]?\\s*SELECT"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "drop-database",
+          "regex": "(?i)\\bDROP\\s+DATABASE\\b",
+          "reason": "DROP DATABASE permanently deletes the entire database. Verify and back up first.",
+          "severity": "critical",
+          "explanation": "DROP DATABASE completely removes a database and ALL its contents:\n\n- All tables, views, and indexes\n- All stored procedures and functions\n- All triggers and events\n- All data - gone permanently\n- User privileges on the database remain but are orphaned\n\nIF EXISTS only prevents errors if the database doesn't exist - it still deletes!\n\nBefore dropping:\n  mysqldump -h host -u user -p dbname > backup.sql\n\nVerify database name:\n  SHOW DATABASES LIKE 'dbname';",
+          "suggestions": [
+            {
+              "command": "mysqldump -h {host} -u {user} -p {dbname} > backup.sql",
+              "description": "Create a full backup before dropping"
+            },
+            {
+              "command": "SHOW DATABASES LIKE '{dbname}'",
+              "description": "Verify database name before dropping"
+            },
+            {
+              "command": "SELECT table_name FROM information_schema.tables WHERE table_schema = '{dbname}'",
+              "description": "List all tables in the database"
+            }
+          ]
+        },
+        {
+          "name": "drop-table",
+          "regex": "(?i)\\bDROP\\s+TABLE\\b",
+          "reason": "DROP TABLE permanently deletes the table. Verify and back up first.",
+          "severity": "high",
+          "explanation": "DROP TABLE removes the table structure and ALL data:\n\n- All rows are permanently deleted\n- Indexes and constraints are removed\n- Foreign key relationships may break\n- Triggers on the table are dropped\n- AUTO_INCREMENT values are lost\n\nIF EXISTS only prevents errors - it still drops the table!\n\nBackup table first:\n  mysqldump -h host -u user -p dbname tablename > table_backup.sql\n\nPreview table contents:\n  SELECT COUNT(*) FROM tablename;\n  SELECT * FROM tablename LIMIT 10;",
+          "suggestions": [
+            {
+              "command": "mysqldump -h {host} -u {user} -p {dbname} {tablename} > table_backup.sql",
+              "description": "Backup the table before dropping"
+            },
+            {
+              "command": "SELECT COUNT(*) FROM {tablename}",
+              "description": "Check row count before dropping"
+            },
+            {
+              "command": "DESCRIBE {tablename}",
+              "description": "Review table structure before dropping"
+            },
+            {
+              "command": "SELECT * FROM {tablename} LIMIT 10",
+              "description": "Preview table contents"
+            }
+          ]
+        },
+        {
+          "name": "truncate-table",
+          "regex": "(?i)TRUNCATE\\s+(?:TABLE\\s+)?[a-zA-Z_]",
+          "reason": "TRUNCATE permanently deletes all rows. Cannot be rolled back in MySQL.",
+          "severity": "high",
+          "explanation": "TRUNCATE is faster than DELETE but more dangerous in MySQL:\n\n- Removes ALL rows instantly\n- CANNOT be rolled back (implicit commit)\n- Does not fire DELETE triggers\n- Resets AUTO_INCREMENT counter to 1\n- Requires DROP privilege\n- Acquires table lock\n\nUnlike PostgreSQL, MySQL's TRUNCATE is NOT transactional!\n\nCheck row count first:\n  SELECT COUNT(*) FROM tablename;\n\nIf you need rollback capability, use:\n  DELETE FROM tablename;  -- Slower but transactional",
+          "suggestions": [
+            {
+              "command": "SELECT COUNT(*) FROM {tablename}",
+              "description": "Check how many rows would be deleted"
+            },
+            {
+              "command": "DELETE FROM {tablename}",
+              "description": "Use DELETE for transactional, recoverable deletion"
+            },
+            {
+              "command": "CREATE TABLE {tablename}_backup AS SELECT * FROM {tablename}",
+              "description": "Backup data to temporary table before truncating"
+            }
+          ]
+        },
+        {
+          "name": "delete-without-where",
+          "regex": "(?i)DELETE\\s+FROM\\s+(?:(?:[a-zA-Z_][a-zA-Z0-9_]*|`[^`]+`)(?:\\.(?:[a-zA-Z_][a-zA-Z0-9_]*|`[^`]+`))?)\\s*(?:;|$)",
+          "reason": "DELETE without WHERE clause deletes ALL rows. Add a WHERE clause.",
+          "severity": "high",
+          "explanation": "DELETE without WHERE removes ALL rows from the table:\n\n- Each row deletion is logged in binary log\n- CAN be rolled back if within a transaction\n- Fires DELETE triggers for each row\n- Does NOT reset AUTO_INCREMENT counter\n- Much slower than TRUNCATE for large tables\n\nIf you meant to delete all rows:\n- TRUNCATE is faster (but non-transactional)\n- DELETE in transaction allows rollback\n\nOtherwise, add a WHERE clause:\n  DELETE FROM tablename WHERE condition;\n\nPreview what would be deleted:\n  SELECT COUNT(*) FROM tablename;  -- all rows!\n  SELECT * FROM tablename LIMIT 10;",
+          "suggestions": [
+            {
+              "command": "DELETE FROM {tablename} WHERE {condition}",
+              "description": "Add a WHERE clause to limit deletion"
+            },
+            {
+              "command": "SELECT COUNT(*) FROM {tablename}",
+              "description": "Check how many rows exist before deletion"
+            },
+            {
+              "command": "TRUNCATE TABLE {tablename}",
+              "description": "Use TRUNCATE if you truly want to delete all rows (faster)"
+            },
+            {
+              "command": "SELECT * FROM {tablename} LIMIT 10",
+              "description": "Preview table contents before deletion"
+            }
+          ]
+        },
+        {
+          "name": "mysqladmin-drop",
+          "regex": "mysqladmin\\s+.*drop\\b",
+          "reason": "mysqladmin drop permanently deletes the database. Verify carefully.",
+          "severity": "critical",
+          "explanation": "mysqladmin drop is the CLI equivalent of DROP DATABASE:\n\n- Completely removes the database\n- All data is lost permanently\n- Has an 'are you sure?' prompt by default\n- Adding --force skips confirmation!\n\nTriple-check the database name. Common mistake:\n  mysqladmin drop myapp_production  # Oops, meant myapp_staging\n\nBackup first:\n  mysqldump -h host -u user -p dbname > backup.sql\n\nList databases to verify:\n  mysql -e 'SHOW DATABASES;'",
+          "suggestions": [
+            {
+              "command": "mysqldump -h {host} -u {user} -p {dbname} > backup.sql",
+              "description": "Create a full backup before dropping"
+            },
+            {
+              "command": "mysql -e 'SHOW DATABASES'",
+              "description": "List databases to verify the correct one"
+            },
+            {
+              "command": "mysql -e 'USE {dbname}; SHOW TABLES'",
+              "description": "Review tables in the database"
+            }
+          ]
+        },
+        {
+          "name": "mysqldump-add-drop-database",
+          "regex": "mysqldump\\s+.*--add-drop-database",
+          "reason": "mysqldump --add-drop-database drops the database before restore.",
+          "severity": "high",
+          "explanation": "mysqldump --add-drop-database adds DROP DATABASE to the backup file.\n\nOn restore, this will:\n- DROP the database before CREATE DATABASE\n- Destroy ALL existing data in that database\n- If restore fails partway, data may be lost\n\nThis is dangerous when restoring to a database with data you want to keep.\n\nSafer approach:\n- Restore to a new/different database first\n- Verify the restore completed successfully\n- Then rename or swap databases\n\nWithout --add-drop-database:\n  mysqldump dbname > backup.sql  # Creates only, no drops",
+          "suggestions": [
+            {
+              "command": "mysqldump {dbname} > backup.sql",
+              "description": "Create backup without DROP DATABASE statement"
+            },
+            {
+              "command": "mysql -e 'CREATE DATABASE {newdb}' && mysql {newdb} < backup.sql",
+              "description": "Restore to a new database first, then verify"
+            }
+          ]
+        },
+        {
+          "name": "mysqldump-add-drop-table",
+          "regex": "mysqldump\\s+.*--add-drop-table",
+          "reason": "mysqldump --add-drop-table drops tables before creating them on restore.",
+          "severity": "medium",
+          "explanation": "mysqldump --add-drop-table adds DROP TABLE before each CREATE TABLE.\n\nThis is actually the DEFAULT behavior of mysqldump!\nOn restore, each table is dropped before being recreated.\n\nRisks:\n- If restore fails partway, some tables may be dropped without recreation\n- Existing data in those tables is permanently lost\n\nSafer alternatives:\n- Use --skip-add-drop-table to disable drops\n- Restore to a new database first, then verify\n- Keep the original database until restore is confirmed\n\nTo preserve existing data:\n  mysqldump --skip-add-drop-table dbname > backup.sql",
+          "suggestions": [
+            {
+              "command": "mysqldump --skip-add-drop-table {dbname} > backup.sql",
+              "description": "Create backup without DROP TABLE statements"
+            },
+            {
+              "command": "mysqldump {dbname} > backup.sql",
+              "description": "Default dump includes DROP TABLE (use --skip-add-drop-table to disable)"
+            }
+          ]
+        },
+        {
+          "name": "grant-all",
+          "regex": "(?i)GRANT\\s+ALL\\s+(?:PRIVILEGES\\s+)?ON\\s+\\*\\.\\*",
+          "reason": "GRANT ALL ON *.* gives unrestricted access to all databases.",
+          "severity": "high",
+          "explanation": "GRANT ALL PRIVILEGES ON *.* gives the user complete control:\n\n- Can create, modify, and drop ANY database\n- Can create, modify, and drop ANY user\n- Can grant privileges to others\n- Essentially creates a superuser\n\nThis is rarely necessary and violates principle of least privilege.\n\nBetter alternatives:\n- GRANT ALL ON specific_db.* - Limit to one database\n- GRANT SELECT, INSERT, UPDATE ON db.* - Limit operations\n- GRANT ... ON db.table - Limit to specific tables\n\nReview current grants:\n  SHOW GRANTS FOR 'user'@'host';",
+          "suggestions": [
+            {
+              "command": "GRANT ALL ON {specific_db}.* TO '{user}'@'{host}'",
+              "description": "Limit privileges to a specific database"
+            },
+            {
+              "command": "GRANT SELECT, INSERT, UPDATE ON {db}.* TO '{user}'@'{host}'",
+              "description": "Grant only needed privileges"
+            },
+            {
+              "command": "SHOW GRANTS FOR '{user}'@'{host}'",
+              "description": "Review current grants before adding more"
+            }
+          ]
+        },
+        {
+          "name": "drop-user",
+          "regex": "(?i)\\bDROP\\s+USER\\b",
+          "reason": "DROP USER permanently removes the user account and all their privileges.",
+          "severity": "medium",
+          "explanation": "DROP USER removes the MySQL user account:\n\n- All privileges granted to the user are revoked\n- User can no longer authenticate\n- Applications using this user will fail\n- Cannot be undone (user must be recreated)\n\nIF EXISTS only prevents errors if user doesn't exist.\n\nBefore dropping:\n  SHOW GRANTS FOR 'user'@'host';  -- Document privileges\n  SELECT * FROM mysql.user WHERE user='username';  -- Verify user\n\nConsider disabling instead:\n  ALTER USER 'user'@'host' ACCOUNT LOCK;",
+          "suggestions": [
+            {
+              "command": "SHOW GRANTS FOR '{user}'@'{host}'",
+              "description": "Document privileges before dropping"
+            },
+            {
+              "command": "ALTER USER '{user}'@'{host}' ACCOUNT LOCK",
+              "description": "Disable account instead of dropping"
+            },
+            {
+              "command": "SELECT * FROM mysql.user WHERE user='{username}'",
+              "description": "Verify user exists and check details"
+            }
+          ]
+        },
+        {
+          "name": "reset-master",
+          "regex": "(?i)\\bRESET\\s+MASTER\\b",
+          "reason": "RESET MASTER deletes all binary logs and resets the binlog position.",
+          "severity": "critical",
+          "explanation": "RESET MASTER is destructive to replication and point-in-time recovery:\n\n- Deletes ALL binary log files\n- Resets binary log index\n- Clears GTID executed set\n- Breaks replication to all replicas\n- Loses point-in-time recovery capability\n\nReplicas must be reconfigured after RESET MASTER on the source.\n\nBefore running:\n- Ensure no replicas are replicating\n- Backup binary logs if needed for recovery\n- Consider PURGE BINARY LOGS for selective cleanup\n\nSafer alternative:\n  PURGE BINARY LOGS BEFORE 'date';  -- Keeps recent logs",
+          "suggestions": [
+            {
+              "command": "PURGE BINARY LOGS BEFORE '{date}'",
+              "description": "Selectively purge old logs instead of all"
+            },
+            {
+              "command": "SHOW BINARY LOGS",
+              "description": "List current binary logs before reset"
+            },
+            {
+              "command": "SHOW SLAVE STATUS",
+              "description": "Check replica status before resetting master"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "database.mongodb",
+      "name": "MongoDB",
+      "description": "Protects against destructive MongoDB operations like dropDatabase, dropCollection, and remove without criteria",
+      "keywords": [
+        "mongo",
+        "mongosh",
+        "dropDatabase",
+        "dropCollection",
+        "deleteMany"
+      ],
+      "safe_patterns": [
+        {
+          "name": "mongo-find",
+          "regex": "\\.find\\s*\\("
+        },
+        {
+          "name": "mongo-count",
+          "regex": "\\.count(?:Documents)?\\s*\\("
+        },
+        {
+          "name": "mongo-aggregate",
+          "regex": "\\.aggregate\\s*\\("
+        },
+        {
+          "name": "mongodump-no-drop",
+          "regex": "mongodump\\s+(?!.*--drop)"
+        },
+        {
+          "name": "mongo-explain",
+          "regex": "\\.explain\\s*\\("
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "drop-database",
+          "regex": "\\.dropDatabase\\s*\\(",
+          "reason": "dropDatabase permanently deletes the entire database.",
+          "severity": "critical",
+          "explanation": "dropDatabase() removes the current database completely:\n\n- All collections are dropped\n- All indexes are removed\n- All documents are gone\n- Users scoped to the database lose access\n\nThis cannot be undone. The database can be recreated but data is lost.\n\nBackup first:\n  mongodump --db=dbname --out=/path/to/backup\n\nList databases:\n  show dbs"
+        },
+        {
+          "name": "drop-collection",
+          "regex": "\\.drop\\s*\\(\\s*\\)|\\.dropCollection\\s*\\(",
+          "reason": "drop/dropCollection permanently deletes the collection.",
+          "severity": "high",
+          "explanation": "drop() removes the entire collection:\n\n- All documents are deleted\n- All indexes are removed\n- Schema validation rules are lost\n- Cannot be undone\n\nBackup collection first:\n  mongodump --db=dbname --collection=collname\n\nCount documents before dropping:\n  db.collection.countDocuments()"
+        },
+        {
+          "name": "delete-all",
+          "regex": "\\.(?:remove|deleteMany)\\s*\\(\\s*\\{\\s*\\}\\s*\\)",
+          "reason": "remove({}) or deleteMany({}) deletes ALL documents. Add filter criteria.",
+          "severity": "high",
+          "explanation": "An empty filter {} matches ALL documents in the collection:\n\n- deleteMany({}) removes every document\n- remove({}) (deprecated) does the same\n- Collection structure and indexes remain\n\nIf you want to delete everything, drop() is faster.\nOtherwise, add filter criteria:\n  db.collection.deleteMany({ status: 'expired' })\n\nPreview what would be deleted:\n  db.collection.countDocuments({})  // All documents!\n  db.collection.find({}).limit(10)  // Sample docs"
+        },
+        {
+          "name": "mongorestore-drop",
+          "regex": "mongorestore\\s+.*--drop",
+          "reason": "mongorestore --drop deletes existing data before restoring.",
+          "severity": "high",
+          "explanation": "mongorestore --drop drops collections before restoring them:\n\n- Existing data is deleted first\n- If restore fails partway, data may be lost\n- Only affects collections being restored\n\nSafer approaches:\n- Restore to a different database first\n- Use --nsExclude to skip certain collections\n- Remove --drop and handle conflicts manually\n\nTest restore:\n  mongorestore --db=test_restore --drop /backup/path"
+        },
+        {
+          "name": "collection-drop",
+          "regex": "db\\.[a-zA-Z_][a-zA-Z0-9_]*\\.drop\\s*\\(",
+          "reason": "collection.drop() permanently deletes the collection.",
+          "severity": "high",
+          "explanation": "db.<collection>.drop() is the most common way to delete a collection:\n\n- All documents in the collection are deleted\n- Indexes on the collection are removed\n- Cannot be undone\n\nBefore dropping:\n  db.collection.stats()           // Size and document count\n  db.collection.find().limit(5)   // Sample documents\n\nBackup:\n  mongodump --db=mydb --collection=mycollection"
+        }
+      ]
+    },
+    {
+      "id": "database.redis",
+      "name": "Redis",
+      "description": "Protects against destructive Redis operations like FLUSHALL, FLUSHDB, and mass key deletion",
+      "keywords": [
+        "redis",
+        "FLUSHALL",
+        "FLUSHDB",
+        "DEBUG"
+      ],
+      "safe_patterns": [
+        {
+          "name": "redis-get",
+          "regex": "(?i)\\b(?:GET|MGET)\\b"
+        },
+        {
+          "name": "redis-scan",
+          "regex": "(?i)\\bSCAN\\b"
+        },
+        {
+          "name": "redis-info",
+          "regex": "(?i)\\bINFO\\b"
+        },
+        {
+          "name": "redis-keys",
+          "regex": "(?i)\\bKEYS\\b"
+        },
+        {
+          "name": "redis-dbsize",
+          "regex": "(?i)\\bDBSIZE\\b"
+        },
+        {
+          "name": "redis-config-get",
+          "regex": "(?i)\\bCONFIG\\s+GET\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "flushall",
+          "regex": "(?i)\\bFLUSHALL\\b",
+          "reason": "FLUSHALL permanently deletes ALL keys in ALL databases.",
+          "severity": "critical",
+          "explanation": "FLUSHALL removes every key from every database (0-15 by default):\n\n- All cached data is lost\n- All session data is gone\n- All queues are emptied\n- Affects ALL databases, not just current\n\nThis is instant and cannot be undone. RDB/AOF backups are not affected until the next save.\n\nCheck database sizes first:\n  INFO keyspace\n  DBSIZE\n\nConsider:\n  FLUSHDB  # Only current database\n  DEL key1 key2  # Specific keys"
+        },
+        {
+          "name": "flushdb",
+          "regex": "(?i)\\bFLUSHDB\\b",
+          "reason": "FLUSHDB permanently deletes ALL keys in the current database.",
+          "severity": "high",
+          "explanation": "FLUSHDB removes all keys from the currently selected database:\n\n- All keys in this database are deleted\n- Other databases (0-15) are unaffected\n- Instant execution, no confirmation\n- Cannot be undone\n\nCheck current database and key count:\n  CLIENT INFO          # Shows current DB\n  DBSIZE               # Keys in current DB\n  KEYS '*' | head -20  # Sample keys (slow on large DBs)\n\nConsider SCAN + DEL for selective deletion."
+        },
+        {
+          "name": "debug-crash",
+          "regex": "(?i)\\bDEBUG\\s+(?:SEGFAULT|CRASH)\\b",
+          "reason": "DEBUG SEGFAULT/CRASH will crash the Redis server.",
+          "severity": "critical",
+          "explanation": "DEBUG SEGFAULT/CRASH intentionally crashes the Redis server:\n\n- Server process terminates immediately\n- All connections are dropped\n- Unsaved data may be lost\n- Services depending on Redis fail\n\nThis is meant for testing crash recovery, not production use.\n\nThese commands should be disabled in production:\n  CONFIG SET debug-command no\n  rename-command DEBUG \"\"  # In redis.conf"
+        },
+        {
+          "name": "debug-sleep",
+          "regex": "(?i)\\bDEBUG\\s+SLEEP\\b",
+          "reason": "DEBUG SLEEP blocks the Redis server and can cause availability issues.",
+          "severity": "high",
+          "explanation": "DEBUG SLEEP blocks the Redis server for the specified duration:\n\n- All client connections freeze\n- No commands are processed\n- Cluster may mark node as failed\n- Can trigger failover in Sentinel setups\n\nThis is meant for testing timeouts, not production use.\n\nDisable in production:\n  CONFIG SET debug-command no"
+        },
+        {
+          "name": "shutdown",
+          "regex": "(?i)\\bSHUTDOWN\\b(?!\\s+NOSAVE)",
+          "reason": "SHUTDOWN stops the Redis server. Use carefully.",
+          "severity": "high",
+          "explanation": "SHUTDOWN stops the Redis server:\n\n- SHUTDOWN SAVE: Saves RDB before exit (default)\n- SHUTDOWN NOSAVE: Exits immediately, no save\n- All client connections are closed\n- Services depending on Redis fail\n\nCheck for unsaved changes:\n  INFO persistence  # Look at rdb_changes_since_last_save\n\nEnsure proper restart mechanism exists (systemd, Docker, etc.)."
+        },
+        {
+          "name": "config-dangerous",
+          "regex": "(?i)\\bCONFIG\\s+SET\\s+(?:dir|dbfilename|slaveof|replicaof)\\b",
+          "reason": "CONFIG SET for dir/dbfilename/slaveof can be used for security attacks.",
+          "severity": "critical",
+          "explanation": "These CONFIG SET options are commonly exploited in Redis attacks:\n\n- dir + dbfilename: Can write arbitrary files (RCE vector)\n- slaveof/replicaof: Can exfiltrate data to attacker's server\n\nAttack example:\n1. CONFIG SET dir /var/spool/cron\n2. CONFIG SET dbfilename root\n3. SET payload '* * * * * malicious-command'\n4. BGSAVE\n\nDisable in production:\n  rename-command CONFIG \"\"  # In redis.conf\n\nUse ACLs to restrict these commands."
+        },
+        {
+          "name": "config-set-maxmemory",
+          "regex": "(?i)\\bCONFIG\\s+SET\\s+maxmemory(?!-)\\b",
+          "reason": "CONFIG SET maxmemory can trigger immediate mass key eviction if new limit is below current usage.",
+          "severity": "critical",
+          "explanation": "Lowering maxmemory below current usage causes Redis to evict keys immediately\naccording to the active eviction policy:\n\n- volatile-lru/allkeys-lru: Silently deletes keys to fit budget\n- noeviction: Returns OOM errors on writes\n\nCheck current usage first:\n  INFO memory  # Look at used_memory vs maxmemory\n\nPrefer gradual reduction or off-peak changes."
+        },
+        {
+          "name": "config-set-maxmemory-policy",
+          "regex": "(?i)\\bCONFIG\\s+SET\\s+maxmemory-policy\\b",
+          "reason": "CONFIG SET maxmemory-policy changes how Redis evicts keys, risking silent data loss.",
+          "severity": "critical",
+          "explanation": "Switching eviction policy can silently delete keys:\n\n- noeviction -> allkeys-lru: Enables silent key deletion\n- volatile-* -> allkeys-*: Extends eviction to non-expiring keys\n\nCheck current policy:\n  CONFIG GET maxmemory-policy\n\nEnsure application logic handles the new eviction behavior."
+        },
+        {
+          "name": "config-set-save",
+          "regex": "(?i)\\bCONFIG\\s+SET\\s+save\\b",
+          "reason": "CONFIG SET save can disable RDB persistence entirely, risking data loss on restart.",
+          "severity": "high",
+          "explanation": "CONFIG SET save \"\" disables all RDB snapshots:\n\n- No automatic persistence to disk\n- All data lost on restart unless AOF is enabled\n- Existing RDB file may become stale\n\nCheck current persistence:\n  CONFIG GET save\n  CONFIG GET appendonly\n\nEnsure at least one persistence mechanism remains active."
+        },
+        {
+          "name": "config-set-appendonly",
+          "regex": "(?i)\\bCONFIG\\s+SET\\s+appendonly\\b",
+          "reason": "CONFIG SET appendonly can disable AOF persistence, risking data loss on restart.",
+          "severity": "high",
+          "explanation": "Disabling AOF without RDB means zero persistence:\n\n- CONFIG SET appendonly no: Stops AOF logging\n- Combined with disabled RDB: complete data loss on crash/restart\n\nCheck other persistence mechanisms:\n  CONFIG GET save\n  CONFIG GET appendonly\n\nEnsure at least one persistence mechanism remains active."
+        },
+        {
+          "name": "config-rewrite",
+          "regex": "(?i)\\bCONFIG\\s+REWRITE\\b",
+          "reason": "CONFIG REWRITE persists all runtime CONFIG SET changes to redis.conf permanently.",
+          "severity": "high",
+          "explanation": "CONFIG REWRITE writes current runtime config back to redis.conf:\n\n- Makes all CONFIG SET changes survive restarts\n- Can persist dangerous temporary changes permanently\n- No undo: must manually edit redis.conf to revert\n\nReview current runtime changes first:\n  CONFIG GET *  # Compare with original redis.conf\n\nEnsure no dangerous CONFIG SET changes are pending before rewriting."
+        }
+      ]
+    },
+    {
+      "id": "database.sqlite",
+      "name": "SQLite",
+      "description": "Protects against destructive SQLite operations like DROP TABLE, DELETE without WHERE, and accidental data loss",
+      "keywords": [
+        "sqlite",
+        "sqlite3",
+        "DROP",
+        "TRUNCATE",
+        "DELETE"
+      ],
+      "safe_patterns": [
+        {
+          "name": "select-query",
+          "regex": "(?i)^\\s*SELECT\\s+"
+        },
+        {
+          "name": "sql-cli-select",
+          "regex": "(?i)(?:psql\\s+.*(?:-c|--command)|mysql\\s+.*(?:-e|--execute)|sqlite3\\s+[^\\s]+)\\s+['\"]?\\s*SELECT"
+        },
+        {
+          "name": "sqlite-select",
+          "regex": "(?i)sqlite3\\s+[^\\s]+\\s+['\"]?\\s*SELECT"
+        },
+        {
+          "name": "dot-schema",
+          "regex": "\\.schema"
+        },
+        {
+          "name": "dot-tables",
+          "regex": "\\.tables"
+        },
+        {
+          "name": "dot-dump",
+          "regex": "\\.dump"
+        },
+        {
+          "name": "dot-backup",
+          "regex": "\\.backup"
+        },
+        {
+          "name": "explain",
+          "regex": "(?i)^\\s*EXPLAIN\\s+"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "drop-table",
+          "regex": "(?i)\\bDROP\\s+TABLE\\b",
+          "reason": "DROP TABLE permanently deletes the table (even with IF EXISTS). Verify it is intended.",
+          "severity": "critical",
+          "explanation": "DROP TABLE permanently removes a table and all its data from the SQLite database. Unlike some other databases, SQLite has no recycle bin or undo mechanism. The IF EXISTS clause only prevents errors, it doesn't make the operation less destructive.\n\nSafer alternatives:\n- .schema tablename: View table structure first\n- .dump tablename: Export table data as SQL backup\n- .backup: Create full database backup before dropping\n- ALTER TABLE ... RENAME: Rename instead of drop if reorganizing"
+        },
+        {
+          "name": "delete-without-where",
+          "regex": "(?i)DELETE\\s+FROM\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:;|$)",
+          "reason": "DELETE without WHERE deletes ALL rows. Add a WHERE clause.",
+          "severity": "critical",
+          "explanation": "DELETE FROM without a WHERE clause removes every row from the table. This is almost always unintentional - if you truly want to remove all rows, TRUNCATE or DROP TABLE + CREATE is more explicit about the intent. SQLite doesn't support TRUNCATE, making this pattern especially dangerous.\n\nSafer alternatives:\n- SELECT COUNT(*) FROM table: Check row count first\n- DELETE FROM table WHERE condition: Add explicit conditions\n- .backup before DELETE: Create backup first\n- Use transactions: BEGIN; DELETE ...; verify; COMMIT or ROLLBACK"
+        },
+        {
+          "name": "vacuum-into",
+          "regex": "(?i)VACUUM\\s+INTO\\s+",
+          "reason": "VACUUM INTO overwrites the target file if it exists.",
+          "severity": "medium",
+          "explanation": "VACUUM INTO creates a new compacted copy of the database at the specified path. If a file already exists at that path, it will be overwritten without warning. This can accidentally destroy other databases or important files.\n\nSafer alternatives:\n- Check if target file exists before running\n- Use a unique filename with timestamp\n- .backup filename: Alternative backup method\n- Move existing file before VACUUM INTO"
+        },
+        {
+          "name": "sqlite3-stdin",
+          "regex": "sqlite3\\s+[^\\s]+\\s+<\\s+",
+          "reason": "Running SQL from file could contain destructive commands. Review the file first.",
+          "severity": "high",
+          "explanation": "Piping SQL from a file into sqlite3 executes all commands without review. The file may contain DROP TABLE, DELETE, or other destructive statements. If the file comes from an untrusted source or was auto-generated, it could cause unintended data loss.\n\nSafer alternatives:\n- Review the SQL file contents first\n- .backup before running: Create database backup\n- .read filename inside sqlite3: Allows Ctrl+C interruption\n- Run in a transaction: Wrap file contents in BEGIN/COMMIT"
+        }
+      ]
+    },
+    {
+      "id": "database.supabase",
+      "name": "Supabase",
+      "description": "Protects against destructive Supabase CLI operations including database resets, migration rollbacks, function/secret/storage deletion, project removal, and infrastructure changes",
+      "keywords": [
+        "supabase",
+        "db reset",
+        "db push",
+        "migration repair",
+        "migration down",
+        "migration squash",
+        "functions delete",
+        "secrets unset",
+        "storage rm",
+        "projects delete",
+        "orgs delete",
+        "branches delete",
+        "domains delete",
+        "vanity-subdomains delete",
+        "sso remove",
+        "network-restrictions",
+        "config push"
+      ],
+      "safe_patterns": [
+        {
+          "name": "supabase-db-diff",
+          "regex": "supabase\\s+db\\s+diff"
+        },
+        {
+          "name": "supabase-db-lint",
+          "regex": "supabase\\s+db\\s+lint"
+        },
+        {
+          "name": "supabase-db-dump",
+          "regex": "supabase\\s+db\\s+dump"
+        },
+        {
+          "name": "supabase-db-shell-safe",
+          "regex": "(?i)supabase\\s+db\\s+shell\\s*$"
+        },
+        {
+          "name": "supabase-inspect-db",
+          "regex": "supabase\\s+inspect\\s+db"
+        },
+        {
+          "name": "supabase-status",
+          "regex": "supabase\\s+status"
+        },
+        {
+          "name": "supabase-start",
+          "regex": "supabase\\s+start"
+        },
+        {
+          "name": "supabase-services",
+          "regex": "supabase\\s+services"
+        },
+        {
+          "name": "supabase-gen-types",
+          "regex": "supabase\\s+gen\\s+types"
+        },
+        {
+          "name": "supabase-test-db",
+          "regex": "supabase\\s+test\\s+db"
+        },
+        {
+          "name": "supabase-migration-list",
+          "regex": "supabase\\s+migration\\s+list"
+        },
+        {
+          "name": "supabase-migration-new",
+          "regex": "supabase\\s+migration\\s+new"
+        },
+        {
+          "name": "supabase-migration-fetch",
+          "regex": "supabase\\s+migration\\s+fetch"
+        },
+        {
+          "name": "supabase-db-push-dry-run",
+          "regex": "supabase\\s+db\\s+push\\b.*--dry-run"
+        },
+        {
+          "name": "supabase-functions-list",
+          "regex": "supabase\\s+functions\\s+list"
+        },
+        {
+          "name": "supabase-functions-serve",
+          "regex": "supabase\\s+functions\\s+serve"
+        },
+        {
+          "name": "supabase-functions-download",
+          "regex": "supabase\\s+functions\\s+download"
+        },
+        {
+          "name": "supabase-functions-new",
+          "regex": "supabase\\s+functions\\s+new"
+        },
+        {
+          "name": "supabase-secrets-list",
+          "regex": "supabase\\s+secrets\\s+list"
+        },
+        {
+          "name": "supabase-storage-ls",
+          "regex": "supabase\\s+storage\\s+ls"
+        },
+        {
+          "name": "supabase-projects-list",
+          "regex": "supabase\\s+projects\\s+list"
+        },
+        {
+          "name": "supabase-orgs-list",
+          "regex": "supabase\\s+orgs\\s+list"
+        },
+        {
+          "name": "supabase-branches-list",
+          "regex": "supabase\\s+branches\\s+list"
+        },
+        {
+          "name": "supabase-branches-get",
+          "regex": "supabase\\s+branches\\s+get"
+        },
+        {
+          "name": "supabase-domains-get",
+          "regex": "supabase\\s+domains\\s+get"
+        },
+        {
+          "name": "supabase-domains-reverify",
+          "regex": "supabase\\s+domains\\s+reverify"
+        },
+        {
+          "name": "supabase-vanity-subdomains-get",
+          "regex": "supabase\\s+vanity-subdomains\\s+get"
+        },
+        {
+          "name": "supabase-vanity-subdomains-check",
+          "regex": "supabase\\s+vanity-subdomains\\s+check-availability"
+        },
+        {
+          "name": "supabase-sso-list",
+          "regex": "supabase\\s+sso\\s+list"
+        },
+        {
+          "name": "supabase-sso-show",
+          "regex": "supabase\\s+sso\\s+show"
+        },
+        {
+          "name": "supabase-sso-info",
+          "regex": "supabase\\s+sso\\s+info"
+        },
+        {
+          "name": "supabase-network-restrictions-get",
+          "regex": "supabase\\s+network-restrictions\\s+get"
+        },
+        {
+          "name": "supabase-network-bans-get",
+          "regex": "supabase\\s+network-bans\\s+get"
+        },
+        {
+          "name": "supabase-ssl-enforcement-get",
+          "regex": "supabase\\s+ssl-enforcement\\s+get"
+        },
+        {
+          "name": "supabase-postgres-config-get",
+          "regex": "supabase\\s+postgres-config\\s+get"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "supabase-db-reset",
+          "regex": "supabase\\s+db\\s+reset",
+          "reason": "supabase db reset drops and recreates the entire database. All data will be lost.",
+          "severity": "critical",
+          "explanation": "supabase db reset completely destroys and recreates your database:\n\n- All tables, views, and functions are dropped\n- All data is permanently deleted\n- Migrations are re-applied from scratch\n- Seed data (if configured) is re-inserted\n\nThis is irreversible for any data not captured in migrations or seeds.\nWith --linked, this targets the remote production database.\n\nBefore resetting:\n  supabase db dump -f backup.sql\n\nReview differences first:\n  supabase db diff",
+          "suggestions": [
+            {
+              "command": "supabase db dump -f backup.sql",
+              "description": "Dump the database before resetting"
+            },
+            {
+              "command": "supabase db diff",
+              "description": "Review schema differences before resetting"
+            },
+            {
+              "command": "supabase migration list",
+              "description": "Check migration status before resetting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-db-push",
+          "regex": "supabase\\s+db\\s+push",
+          "reason": "supabase db push applies migrations to the remote database. Use --dry-run to preview first.",
+          "severity": "critical",
+          "explanation": "supabase db push applies pending migrations to the remote (linked) database:\n\n- Migrations may include DROP/ALTER statements\n- Changes to the production database are irreversible\n- With --linked, this targets the live project database\n\nAlways preview changes first:\n  supabase db push --dry-run\n\nDump remote database before pushing:\n  supabase db dump -f backup.sql --linked",
+          "suggestions": [
+            {
+              "command": "supabase db push --dry-run",
+              "description": "Preview migration changes without applying them"
+            },
+            {
+              "command": "supabase db diff",
+              "description": "Review schema differences before pushing"
+            },
+            {
+              "command": "supabase db dump -f backup.sql --linked",
+              "description": "Dump the remote database before pushing migrations"
+            }
+          ]
+        },
+        {
+          "name": "supabase-db-shell-destructive",
+          "regex": "(?i)supabase\\s+db\\s+shell\\s+.*\\b(DROP|TRUNCATE|DELETE|ALTER)\\b",
+          "reason": "supabase db shell with destructive SQL (DROP/TRUNCATE/DELETE/ALTER). Verify the command carefully.",
+          "severity": "high",
+          "explanation": "supabase db shell is being invoked with destructive SQL:\n\n- DROP permanently removes database objects\n- TRUNCATE removes all rows from tables\n- DELETE without WHERE removes all rows\n- ALTER can drop columns, change types, or remove constraints\n\nDump the database before running destructive commands:\n  supabase db dump -f backup.sql\n\nCheck row count first:\n  supabase db shell -- -c 'SELECT COUNT(*) FROM tablename'",
+          "suggestions": [
+            {
+              "command": "supabase db dump -f backup.sql",
+              "description": "Dump the database before running destructive SQL"
+            },
+            {
+              "command": "supabase db shell -- -c 'SELECT COUNT(*) FROM {tablename}'",
+              "description": "Check row count before deleting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-migration-repair",
+          "regex": "supabase\\s+migration\\s+repair",
+          "reason": "supabase migration repair modifies the migration history. This can cause drift between schema and migrations.",
+          "severity": "critical",
+          "explanation": "supabase migration repair alters the migration history table:\n\n- Can mark migrations as applied or reverted\n- May cause schema drift if used incorrectly\n- Can break future migration runs\n\nReview migration status first:\n  supabase migration list\n\nDump the database before repairing:\n  supabase db dump -f backup.sql",
+          "suggestions": [
+            {
+              "command": "supabase migration list",
+              "description": "Review current migration status before repairing"
+            },
+            {
+              "command": "supabase db dump -f backup.sql",
+              "description": "Dump the database before modifying migration history"
+            }
+          ]
+        },
+        {
+          "name": "supabase-migration-down",
+          "regex": "supabase\\s+migration\\s+down",
+          "reason": "supabase migration down reverts applied migrations. Schema changes and associated data may be lost.",
+          "severity": "critical",
+          "explanation": "supabase migration down reverts previously applied migrations:\n\n- Reversed migrations may DROP tables, columns, or constraints\n- Data in dropped objects is permanently lost\n- With --linked, this targets the remote production database\n- The --version flag can revert multiple migrations at once\n\nReview applied migrations first:\n  supabase migration list\n\nDump the database before reverting:\n  supabase db dump -f backup.sql --linked",
+          "suggestions": [
+            {
+              "command": "supabase migration list",
+              "description": "Review applied migrations before reverting"
+            },
+            {
+              "command": "supabase db dump -f backup.sql --linked",
+              "description": "Dump the database before reverting migrations"
+            },
+            {
+              "command": "supabase db diff",
+              "description": "Review schema differences before reverting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-migration-squash",
+          "regex": "supabase\\s+migration\\s+squash",
+          "reason": "supabase migration squash consolidates migrations and omits data manipulation statements (INSERT/UPDATE/DELETE).",
+          "severity": "high",
+          "explanation": "supabase migration squash consolidates multiple migration files into one:\n\n- DML statements (INSERT, UPDATE, DELETE) are omitted\n- Cron jobs, storage buckets, and vault secrets are lost\n- These must be manually recreated in the squashed migration\n- With --linked, modifies the remote migration history\n\nReview migrations before squashing:\n  supabase migration list\n\nDump the database before squashing:\n  supabase db dump -f backup.sql",
+          "suggestions": [
+            {
+              "command": "supabase migration list",
+              "description": "Review migrations before squashing"
+            },
+            {
+              "command": "supabase db dump -f backup.sql",
+              "description": "Dump the database before squashing migrations"
+            }
+          ]
+        },
+        {
+          "name": "supabase-functions-delete",
+          "regex": "supabase\\s+functions\\s+delete",
+          "reason": "supabase functions delete removes a deployed Edge Function. This causes immediate downtime for that function.",
+          "severity": "high",
+          "explanation": "supabase functions delete permanently removes a deployed Edge Function:\n\n- The function is immediately unavailable\n- Clients calling the function will receive errors\n- The function can be re-deployed from local source code\n\nVerify the function first:\n  supabase functions list\n\nDownload source before deleting:\n  supabase functions download {function_name}",
+          "suggestions": [
+            {
+              "command": "supabase functions list",
+              "description": "List functions to verify the correct one"
+            },
+            {
+              "command": "supabase functions download {function_name}",
+              "description": "Download function source before deleting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-storage-rm",
+          "regex": "supabase\\s+storage\\s+rm",
+          "reason": "supabase storage rm deletes objects from storage. With --recursive, entire directories are removed.",
+          "severity": "high",
+          "explanation": "supabase storage rm permanently deletes objects from Supabase Storage:\n\n- Deleted files cannot be recovered\n- With --recursive, entire directory trees are removed\n- User-uploaded content may be permanently lost\n\nList contents before deleting:\n  supabase storage ls {path}\n\nCopy files locally before deleting:\n  supabase storage cp {path} ./backup/",
+          "suggestions": [
+            {
+              "command": "supabase storage ls {path}",
+              "description": "List storage contents before deleting"
+            },
+            {
+              "command": "supabase storage cp {path} ./backup/",
+              "description": "Copy files locally before deleting from storage"
+            }
+          ]
+        },
+        {
+          "name": "supabase-secrets-unset",
+          "regex": "supabase\\s+secrets\\s+unset",
+          "reason": "supabase secrets unset removes secrets from the project. Edge Functions depending on them will break immediately.",
+          "severity": "high",
+          "explanation": "supabase secrets unset removes environment variables from the project:\n\n- Edge Functions depending on these secrets will fail\n- Third-party integrations may break\n- The secret values cannot be retrieved after removal\n\nList secrets before removing:\n  supabase secrets list",
+          "suggestions": [
+            {
+              "command": "supabase secrets list",
+              "description": "List secrets to verify before removing"
+            }
+          ]
+        },
+        {
+          "name": "supabase-projects-delete",
+          "regex": "supabase\\s+projects\\s+delete",
+          "reason": "supabase projects delete permanently removes the entire Supabase project and all its data.",
+          "severity": "critical",
+          "explanation": "supabase projects delete permanently removes a Supabase project:\n\n- The database and all data are deleted\n- Auth users and sessions are removed\n- Storage buckets and files are deleted\n- Edge functions are removed\n- API keys are invalidated\n\nThis action cannot be undone.\n\nDump the database before deleting:\n  supabase db dump -f backup.sql --linked\n\nVerify the project:\n  supabase projects list",
+          "suggestions": [
+            {
+              "command": "supabase db dump -f backup.sql --linked",
+              "description": "Dump the database before deleting the project"
+            },
+            {
+              "command": "supabase projects list",
+              "description": "List projects to verify the correct one"
+            }
+          ]
+        },
+        {
+          "name": "supabase-orgs-delete",
+          "regex": "supabase\\s+orgs\\s+delete",
+          "reason": "supabase orgs delete permanently removes the organization and may affect all projects within it.",
+          "severity": "high",
+          "explanation": "supabase orgs delete permanently removes a Supabase organization:\n\n- All projects in the organization may be affected\n- Billing and subscription are cancelled\n- Team members lose access\n\nThis action cannot be undone.\n\nList organization projects first:\n  supabase projects list\n\nVerify the organization:\n  supabase orgs list",
+          "suggestions": [
+            {
+              "command": "supabase orgs list",
+              "description": "List organizations to verify the correct one"
+            },
+            {
+              "command": "supabase projects list",
+              "description": "List projects in the organization before deleting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-branches-delete",
+          "regex": "supabase\\s+branches\\s+delete",
+          "reason": "supabase branches delete permanently removes a preview branch and its database.",
+          "severity": "high",
+          "explanation": "supabase branches delete permanently removes a preview database branch:\n\n- The branch database and all its data are deleted\n- Any pending migrations on the branch are lost\n- This action cannot be undone\n\nVerify the branch first:\n  supabase branches list\n\nInspect branch details:\n  supabase branches get --id {branch_id}",
+          "suggestions": [
+            {
+              "command": "supabase branches list",
+              "description": "List branches to verify the correct one"
+            },
+            {
+              "command": "supabase branches get --id {branch_id}",
+              "description": "Inspect branch details before deleting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-domains-delete",
+          "regex": "supabase\\s+domains\\s+delete",
+          "reason": "supabase domains delete removes the custom domain configuration. Clients using the custom domain will lose access.",
+          "severity": "high",
+          "explanation": "supabase domains delete removes the custom hostname configuration:\n\n- Clients accessing the service via the custom domain will fail\n- DNS records may need to be reconfigured\n- Re-setup requires DNS verification\n\nCheck current domain configuration:\n  supabase domains get",
+          "suggestions": [
+            {
+              "command": "supabase domains get",
+              "description": "Check current domain configuration before deleting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-vanity-subdomains-delete",
+          "regex": "supabase\\s+vanity-subdomains\\s+delete",
+          "reason": "supabase vanity-subdomains delete removes the vanity subdomain. Clients using it will lose access.",
+          "severity": "high",
+          "explanation": "supabase vanity-subdomains delete removes the vanity subdomain:\n\n- Clients using the vanity URL will lose access\n- Auth flows configured with the vanity URL will break\n- The subdomain name may not be reclaimable\n\nCheck current configuration:\n  supabase vanity-subdomains get",
+          "suggestions": [
+            {
+              "command": "supabase vanity-subdomains get",
+              "description": "Check current vanity subdomain before deleting"
+            }
+          ]
+        },
+        {
+          "name": "supabase-network-restrictions-update",
+          "regex": "supabase\\s+network-restrictions\\s+update",
+          "reason": "supabase network-restrictions update modifies allowed CIDR ranges. Misconfiguration can lock out all database connections.",
+          "severity": "high",
+          "explanation": "supabase network-restrictions update modifies the database firewall rules:\n\n- Overly restrictive CIDR ranges can lock out all connections\n- Including your own application servers and admin access\n- Recovery may require Supabase support intervention\n\nCheck current restrictions first:\n  supabase network-restrictions get",
+          "suggestions": [
+            {
+              "command": "supabase network-restrictions get",
+              "description": "Check current network restrictions before modifying"
+            }
+          ]
+        },
+        {
+          "name": "supabase-sso-remove",
+          "regex": "supabase\\s+sso\\s+remove",
+          "reason": "supabase sso remove disconnects an SSO identity provider. All users authenticating via that provider will be locked out.",
+          "severity": "critical",
+          "explanation": "supabase sso remove disconnects an SSO identity provider:\n\n- All users authenticating via that provider are immediately locked out\n- Existing sessions may be invalidated\n- Re-adding the provider requires full reconfiguration\n\nList providers before removing:\n  supabase sso list\n\nInspect provider details:\n  supabase sso show --id {provider_id}",
+          "suggestions": [
+            {
+              "command": "supabase sso list",
+              "description": "List SSO providers before removing"
+            },
+            {
+              "command": "supabase sso show --id {provider_id}",
+              "description": "Inspect SSO provider details before removing"
+            }
+          ]
+        },
+        {
+          "name": "supabase-config-push",
+          "regex": "supabase\\s+config\\s+push",
+          "reason": "supabase config push overwrites the remote project configuration with local config.toml settings.",
+          "severity": "high",
+          "explanation": "supabase config push replaces the remote project configuration:\n\n- Auth, database, API, and other settings may be overwritten\n- Misconfiguration can break authentication flows\n- Changes take effect immediately on the live project\n\nReview your local config.toml before pushing.",
+          "suggestions": [
+            {
+              "command": "supabase inspect db bloat",
+              "description": "Inspect the remote database state before pushing config"
+            }
+          ]
+        },
+        {
+          "name": "supabase-stop-no-backup",
+          "regex": "supabase\\s+stop\\b.*--no-backup",
+          "reason": "supabase stop --no-backup stops the local stack and permanently deletes all data volumes.",
+          "severity": "high",
+          "explanation": "supabase stop --no-backup stops the local development stack and deletes data:\n\n- All local database data is permanently deleted\n- Storage objects in the local stack are removed\n- Auth users created locally are lost\n- Combined with --all, deletes ALL local Supabase projects' data\n\nUse 'supabase stop' without --no-backup to preserve data.",
+          "suggestions": [
+            {
+              "command": "supabase stop",
+              "description": "Stop local stack while preserving data backups"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "database.cassandra",
+      "name": "Cassandra",
+      "description": "Protects against destructive Cassandra operations like DROP KEYSPACE, DROP TABLE, and TRUNCATE.",
+      "keywords": [
+        "cqlsh",
+        "cassandra",
+        "DROP",
+        "TRUNCATE",
+        "DELETE",
+        "delete",
+        "drop",
+        "truncate"
+      ],
+      "safe_patterns": [
+        {
+          "name": "cqlsh-select",
+          "regex": "(?i)SELECT\\s+.*\\s+FROM\\b"
+        },
+        {
+          "name": "sql-cli-select",
+          "regex": "(?i)(?:psql\\s+.*(?:-c|--command)|mysql\\s+.*(?:-e|--execute)|sqlite3\\s+[^\\s]+)\\s+['\"]?\\s*SELECT"
+        },
+        {
+          "name": "cqlsh-describe",
+          "regex": "(?i)DESCRIBE\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "drop-keyspace",
+          "regex": "(?i)\\bDROP\\s+KEYSPACE\\b",
+          "reason": "DROP KEYSPACE permanently deletes the entire keyspace and all its data.",
+          "severity": "critical",
+          "explanation": "DROP KEYSPACE removes all tables, types, and data within the keyspace. This operation is immediate and irreversible.\n\nVerify keyspace name:\n  DESCRIBE KEYSPACES;"
+        },
+        {
+          "name": "drop-table",
+          "regex": "(?i)\\bDROP\\s+TABLE\\b",
+          "reason": "DROP TABLE permanently deletes the table and all its data.",
+          "severity": "high",
+          "explanation": "DROP TABLE removes the table schema and all stored data. Snapshots might be available if configured, but the data is removed from the active cluster.\n\nVerify table first:\n  DESCRIBE TABLE tablename;"
+        },
+        {
+          "name": "truncate-table",
+          "regex": "(?i)\\bTRUNCATE\\b",
+          "reason": "TRUNCATE permanently deletes all rows from a table.",
+          "severity": "high",
+          "explanation": "TRUNCATE removes all data from the specified table while keeping the schema. This is faster than DELETE but equally destructive for the data.\n\nCheck row count first:\n  SELECT COUNT(*) FROM tablename;"
+        }
+      ]
+    },
+    {
+      "id": "database.clickhouse",
+      "name": "ClickHouse",
+      "description": "Protects against destructive ClickHouse operations like DROP DATABASE, DROP TABLE, and TRUNCATE.",
+      "keywords": [
+        "clickhouse-client",
+        "clickhouse",
+        "DROP",
+        "TRUNCATE",
+        "DELETE",
+        "delete",
+        "drop",
+        "truncate"
+      ],
+      "safe_patterns": [
+        {
+          "name": "clickhouse-select",
+          "regex": "(?i)SELECT\\s+.*\\s+FROM\\b"
+        },
+        {
+          "name": "sql-cli-select",
+          "regex": "(?i)(?:psql\\s+.*(?:-c|--command)|mysql\\s+.*(?:-e|--execute)|sqlite3\\s+[^\\s]+)\\s+['\"]?\\s*SELECT"
+        },
+        {
+          "name": "clickhouse-show",
+          "regex": "(?i)SHOW\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "drop-database",
+          "regex": "(?i)\\bDROP\\s+DATABASE\\b",
+          "reason": "DROP DATABASE permanently deletes the database and its data.",
+          "severity": "critical",
+          "explanation": "DROP DATABASE in ClickHouse removes all tables and data. Be extremely careful as it might affect distributed tables.\n\nList databases first:\n  SHOW DATABASES;"
+        },
+        {
+          "name": "drop-table",
+          "regex": "(?i)\\bDROP\\s+TABLE\\b",
+          "reason": "DROP TABLE permanently deletes the table data.",
+          "severity": "high",
+          "explanation": "DROP TABLE deletes the table and its associated data on disk. For Replicated tables, this might affect multiple nodes.\n\nVerify table first:\n  SHOW CREATE TABLE tablename;"
+        },
+        {
+          "name": "truncate-table",
+          "regex": "(?i)\\bTRUNCATE\\s+(?:TABLE\\s+)?",
+          "reason": "TRUNCATE permanently deletes all data from a table.",
+          "severity": "high",
+          "explanation": "TRUNCATE removes all data from the table while maintaining the structure. This operation is non-transactional in ClickHouse.\n\nCheck row count first:\n  SELECT count() FROM tablename;"
+        },
+        {
+          "name": "alter-delete",
+          "regex": "(?i)\\bALTER\\s+TABLE\\s+.*\\s+DELETE\\b",
+          "reason": "ALTER TABLE ... DELETE is a heavy mutation that deletes data.",
+          "severity": "high",
+          "explanation": "Mutations in ClickHouse are asynchronous and can be resource-intensive. A DELETE mutation without a careful WHERE clause can remove vast amounts of data.\n\nPreview data to be deleted first with a SELECT."
+        }
+      ]
+    },
+    {
+      "id": "database.snowflake",
+      "name": "Snowflake",
+      "description": "Protects against destructive Snowflake operations like DROP DATABASE, DROP SCHEMA, and TRUNCATE.",
+      "keywords": [
+        "snowsql",
+        "snowflake",
+        "DROP",
+        "TRUNCATE",
+        "DELETE",
+        "delete",
+        "drop",
+        "truncate"
+      ],
+      "safe_patterns": [
+        {
+          "name": "snowflake-select",
+          "regex": "(?i)SELECT\\s+.*\\s+FROM\\b"
+        },
+        {
+          "name": "sql-cli-select",
+          "regex": "(?i)(?:psql\\s+.*(?:-c|--command)|mysql\\s+.*(?:-e|--execute)|sqlite3\\s+[^\\s]+)\\s+['\"]?\\s*SELECT"
+        },
+        {
+          "name": "snowflake-show",
+          "regex": "(?i)SHOW\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "drop-database",
+          "regex": "(?i)\\bDROP\\s+DATABASE\\b",
+          "reason": "DROP DATABASE permanently deletes the Snowflake database.",
+          "severity": "critical",
+          "explanation": "DROP DATABASE removes the database and all its schemas and tables. Snowflake's Time Travel may allow recovery within the retention period.\n\nVerify database name:\n  SHOW DATABASES;"
+        },
+        {
+          "name": "drop-schema",
+          "regex": "(?i)\\bDROP\\s+SCHEMA\\b",
+          "reason": "DROP SCHEMA permanently deletes the schema and its objects.",
+          "severity": "critical",
+          "explanation": "DROP SCHEMA removes the schema and all tables, views, and stages within it.\n\nList schemas first:\n  SHOW SCHEMAS;"
+        },
+        {
+          "name": "drop-table",
+          "regex": "(?i)\\bDROP\\s+TABLE\\b",
+          "reason": "DROP TABLE permanently deletes the table data.",
+          "severity": "high",
+          "explanation": "DROP TABLE removes the table metadata and data. Recovery via UNDROP TABLE is possible if within Time Travel period.\n\nVerify table first:\n  SHOW TABLES LIKE 'tablename';"
+        },
+        {
+          "name": "truncate-table",
+          "regex": "(?i)\\bTRUNCATE\\s+(?:TABLE\\s+)?",
+          "reason": "TRUNCATE permanently deletes all data from a table.",
+          "severity": "high",
+          "explanation": "TRUNCATE removes all rows from a table. This operation cannot be easily undone via Time Travel (only UNDROP works after a DROP).\n\nCheck row count first:\n  SELECT count(*) FROM tablename;"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o /tw ./cmd/tw/
+
+FROM debian:bookworm-slim
+COPY --from=build /tw /usr/local/bin/tw
+RUN /usr/local/bin/tw install
+COPY scripts/smoke-lib.sh /scripts/smoke-lib.sh
+COPY scripts/smoke-test.sh /scripts/smoke-test.sh
+COPY scripts/smoke/ /scripts/smoke/
+RUN chmod +x /scripts/smoke-test.sh /scripts/smoke-lib.sh
+ENTRYPOINT ["/scripts/smoke-test.sh"]

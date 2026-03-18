@@ -1,0 +1,638 @@
+{
+  "category": "windows",
+  "packs": [
+    {
+      "id": "windows.filesystem",
+      "name": "Windows Filesystem",
+      "description": "Protects against destructive Windows file deletion commands (del, rmdir, rd, Remove-Item)",
+      "keywords": [
+        "del",
+        "rmdir",
+        "rd",
+        "Remove-Item"
+      ],
+      "safe_patterns": [
+        {
+          "name": "del-temp",
+          "regex": "(?i)^del\\s+.*(?:%TEMP%|%TMP%|/temp/|/tmp/)"
+        },
+        {
+          "name": "rmdir-temp",
+          "regex": "(?i)^(?:rmdir|rd)\\s+.*(?:%TEMP%|%TMP%|/temp/|/tmp/)"
+        },
+        {
+          "name": "remove-item-temp",
+          "regex": "(?i)^Remove-Item\\s+.*(?:\\$env:TEMP|\\$env:TMP|/temp/|/tmp/)"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "del-recursive-system",
+          "regex": "(?i)\\bdel\\s+.*(?:/[sS]|/[qQ]).*(?:/[sS]|/[qQ]).*(?:[A-Za-z]:/(?:$|Windows|Program|Users|ProgramData)|[A-Za-z]:/(?:\\s|$))",
+          "reason": "del /s /q on system directories is EXTREMELY DANGEROUS and will delete files recursively without confirmation.",
+          "severity": "critical",
+          "explanation": "This command would recursively and silently delete files from a critical Windows directory. The /s flag enables recursion and /q suppresses confirmation prompts.\n\nThis can destroy:\n- The Windows operating system (C:\\Windows)\n- All installed programs (C:\\Program Files)\n- All user profiles and data (C:\\Users)\n- The entire drive if targeting a root path\n\nThere is NO undo. Recovery requires a full system restore from backup.",
+          "suggestions": [
+            {
+              "command": "dir /s {path}",
+              "description": "List files that would be deleted before proceeding",
+              "platform": "windows"
+            },
+            {
+              "command": "del /s /q %TEMP%\\{subdir}",
+              "description": "Delete from temp directory instead (safe)",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "del-recursive",
+          "regex": "(?i)\\bdel\\s+.*/[sS]",
+          "reason": "del /s recursively deletes files. Verify the target path carefully.",
+          "severity": "high",
+          "explanation": "del /s deletes files recursively from the specified directory and all subdirectories. Combined with /q (quiet) or /f (force), this becomes silent and irreversible.\n\nCommon dangerous flags:\n- /s: Recurse into subdirectories\n- /q: Quiet mode, no confirmation\n- /f: Force deletion of read-only files\n\nAlways verify the path before running:\n  dir /s {path}",
+          "suggestions": [
+            {
+              "command": "dir /s {path}",
+              "description": "Preview files that would be deleted",
+              "platform": "windows"
+            },
+            {
+              "command": "del /s /q %TEMP%\\{subdir}",
+              "description": "Safe temp directory deletion",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "rmdir-recursive-system",
+          "regex": "(?i)\\b(?:rmdir|rd)\\s+.*(?:/[sS]).*(?:/[qQ]).*(?:[A-Za-z]:/(?:$|Windows|Program|Users|ProgramData)|[A-Za-z]:/(?:\\s|$))",
+          "reason": "rmdir /s /q on system directories will recursively remove entire directory trees without confirmation.",
+          "severity": "critical",
+          "explanation": "rmdir /s /q (or rd /s /q) removes an entire directory tree silently. When targeting system directories, this is catastrophic and can render Windows unbootable.\n\nThe /s flag removes all files and subdirectories, and /q suppresses confirmation.",
+          "suggestions": [
+            {
+              "command": "dir {path}",
+              "description": "List directory contents before removal",
+              "platform": "windows"
+            },
+            {
+              "command": "rd /s /q %TEMP%\\{subdir}",
+              "description": "Remove from temp directory instead (safe)",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "rmdir-recursive",
+          "regex": "(?i)\\b(?:rmdir|rd)\\s+.*/[sS]",
+          "reason": "rmdir /s recursively removes directory trees. Verify the target path.",
+          "severity": "high",
+          "explanation": "rmdir /s (or rd /s) removes a directory and all its contents recursively. Combined with /q, this is silent and irreversible.\n\nVerify the path before running:\n  dir {path}",
+          "suggestions": [
+            {
+              "command": "dir {path}",
+              "description": "List directory contents before removal",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "remove-item-recurse-force-system",
+          "regex": "(?i)Remove-Item\\s+.*-Recurse.*-Force.*(?:[A-Za-z]:/(?:$|Windows|Program|Users|ProgramData))|Remove-Item\\s+.*-Force.*-Recurse.*(?:[A-Za-z]:/(?:$|Windows|Program|Users|ProgramData))",
+          "reason": "Remove-Item -Recurse -Force on system directories is EXTREMELY DANGEROUS.",
+          "severity": "critical",
+          "explanation": "This PowerShell command recursively and forcefully deletes from a critical Windows directory. The -Force flag bypasses read-only attributes and -Recurse processes all child items.\n\nThis is the PowerShell equivalent of rm -rf on Unix and is equally catastrophic on system paths.",
+          "suggestions": [
+            {
+              "command": "Get-ChildItem {path} | Measure-Object",
+              "description": "Count items before deletion",
+              "platform": "windows"
+            },
+            {
+              "command": "Remove-Item -Recurse -Force $env:TEMP\\{subdir}",
+              "description": "Delete from temp directory instead (safe)",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "remove-item-recurse-force",
+          "regex": "(?i)Remove-Item\\s+.*(?:-Recurse.*-Force|-Force.*-Recurse)",
+          "reason": "Remove-Item -Recurse -Force is destructive and requires human approval.",
+          "severity": "high",
+          "explanation": "Remove-Item with -Recurse and -Force is the PowerShell equivalent of rm -rf. It silently deletes all contents of the target directory without confirmation.\n\nSafer alternatives:\n- Remove the -Force flag to get confirmation prompts\n- Use -WhatIf to preview what would be deleted\n- Target temp directories which are safe to clean",
+          "suggestions": [
+            {
+              "command": "Remove-Item -Recurse {path} -WhatIf",
+              "description": "Preview what would be deleted without actually deleting",
+              "platform": "windows"
+            },
+            {
+              "command": "Get-ChildItem {path} -Recurse | Measure-Object",
+              "description": "Count files that would be deleted",
+              "platform": "windows"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows.services",
+      "name": "Windows Services",
+      "description": "Protects against dangerous Windows service operations (sc, net stop, Stop-Service, taskkill)",
+      "keywords": [
+        "sc",
+        "Stop-Service",
+        "Remove-Service",
+        "taskkill"
+      ],
+      "safe_patterns": [
+        {
+          "name": "sc-query",
+          "regex": "(?i)^sc\\s+(?:query|qc|queryex|GetDisplayName|GetKeyName)\\b"
+        },
+        {
+          "name": "get-service",
+          "regex": "(?i)^Get-Service\\b"
+        },
+        {
+          "name": "tasklist",
+          "regex": "(?i)^tasklist\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "sc-critical-service",
+          "regex": "(?i)\\bsc\\s+(?:stop|delete|config)\\s+(?:wuauserv|WinDefend|MpsSvc|W32Time|Dnscache|LanmanServer|LanmanWorkstation|RpcSs|EventLog|Winmgmt|BITS|Spooler|WSearch|SecurityHealthService)\\b",
+          "reason": "Stopping or deleting critical Windows services can destabilize the system.",
+          "severity": "critical",
+          "explanation": "This command targets a critical Windows service. Stopping or deleting these services can:\n- Disable Windows Update (wuauserv)\n- Disable Windows Defender (WinDefend)\n- Disable the Windows Firewall (MpsSvc)\n- Break DNS resolution (Dnscache)\n- Break network file sharing (LanmanServer/LanmanWorkstation)\n- Break core RPC communication (RpcSs)\n- Disable event logging (EventLog)\n\nCheck service status first:\n  sc query <service>",
+          "suggestions": [
+            {
+              "command": "sc query {service}",
+              "description": "Check service status before modifying",
+              "platform": "windows"
+            },
+            {
+              "command": "sc qc {service}",
+              "description": "Query service configuration",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "sc-stop-delete",
+          "regex": "(?i)\\bsc\\s+(?:stop|delete)\\b",
+          "reason": "sc stop/delete affects service availability. Verify the service name.",
+          "severity": "high",
+          "explanation": "sc stop immediately terminates a service. sc delete permanently removes a service registration — this cannot be easily undone and may require reinstallation of the software that owns the service.\n\nCheck what the service does first:\n  sc qc <service>\n  sc query <service>",
+          "suggestions": [
+            {
+              "command": "sc query {service}",
+              "description": "Check service status first",
+              "platform": "windows"
+            },
+            {
+              "command": "sc stop {service} && sc start {service}",
+              "description": "Restart instead of just stopping",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "stop-service-critical",
+          "regex": "(?i)(?:Stop-Service|Remove-Service)\\s+.*(?:-Name\\s+)?(?:wuauserv|WinDefend|MpsSvc|W32Time|Dnscache|RpcSs|EventLog|Winmgmt)",
+          "reason": "Stopping or removing critical Windows services via PowerShell can destabilize the system.",
+          "severity": "critical",
+          "explanation": "This PowerShell command targets a critical Windows service. The effect is the same as using sc stop/delete but via PowerShell cmdlets.",
+          "suggestions": [
+            {
+              "command": "Get-Service {service}",
+              "description": "Check service status before modifying",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "stop-remove-service",
+          "regex": "(?i)(?:Stop-Service|Remove-Service)\\b",
+          "reason": "Stop-Service/Remove-Service affects service availability.",
+          "severity": "high",
+          "explanation": "Stop-Service immediately stops a running service. Remove-Service permanently deletes the service registration. Both can disrupt system functionality.\n\nCheck the service first:\n  Get-Service <name>",
+          "suggestions": [
+            {
+              "command": "Get-Service {service}",
+              "description": "Check service status first",
+              "platform": "windows"
+            },
+            {
+              "command": "Restart-Service {service}",
+              "description": "Restart instead of stopping",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "taskkill-force",
+          "regex": "(?i)\\btaskkill\\s+.*/[fF]",
+          "reason": "taskkill /F forcefully terminates processes without cleanup.",
+          "severity": "high",
+          "explanation": "taskkill /F forces immediate process termination without allowing graceful shutdown. This can cause:\n- Data loss from unsaved work\n- Corrupted files or databases\n- System instability if targeting system processes (svchost.exe, csrss.exe, etc.)\n\nList processes first:\n  tasklist /FI \"IMAGENAME eq <name>\"",
+          "suggestions": [
+            {
+              "command": "tasklist /FI \"IMAGENAME eq {process}\"",
+              "description": "List matching processes before killing",
+              "platform": "windows"
+            },
+            {
+              "command": "taskkill /IM {process}",
+              "description": "Graceful termination without /F (allows cleanup)",
+              "platform": "windows"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows.permissions",
+      "name": "Windows Permissions",
+      "description": "Protects against dangerous Windows ACL and permission changes (icacls, takeown, attrib, Set-ExecutionPolicy)",
+      "keywords": [
+        "icacls",
+        "cacls",
+        "takeown",
+        "attrib",
+        "Set-ExecutionPolicy"
+      ],
+      "safe_patterns": [
+        {
+          "name": "icacls-query",
+          "regex": "(?i)^icacls\\s+\\S+\\s*$"
+        },
+        {
+          "name": "attrib-query",
+          "regex": "(?i)^attrib\\s+[^+-]"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "icacls-grant-everyone-system",
+          "regex": "(?i)\\bicacls\\s+.*(?:[A-Za-z]:/(?:Windows|Program|ProgramData)).*(?:/grant|/reset).*(?:/[tT]|/inheritance)",
+          "reason": "Recursive ACL changes on Windows system directories can compromise system security.",
+          "severity": "critical",
+          "explanation": "Modifying ACLs recursively on system directories can grant unauthorized access to critical system files or break the security model Windows relies on. The /T flag applies changes recursively to all child objects.\n\nCheck current ACLs first:\n  icacls <path>",
+          "suggestions": [
+            {
+              "command": "icacls {path}",
+              "description": "View current ACLs before modifying",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "icacls-grant-everyone",
+          "regex": "(?i)\\bicacls\\s+.*(?:/grant).*Everyone:F",
+          "reason": "Granting Everyone full control is a serious security risk.",
+          "severity": "high",
+          "explanation": "Granting the Everyone group full control (F) means any user on the system — including potential attackers — can read, write, and delete the affected files. This effectively removes all access control.",
+          "suggestions": [
+            {
+              "command": "icacls {path} /grant {user}:(OI)(CI)M",
+              "description": "Grant modify (not full) access to a specific user instead",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "icacls-reset-recursive",
+          "regex": "(?i)\\bicacls\\s+.*/reset.*/[tT]",
+          "reason": "icacls /reset /T recursively resets all ACLs to inherited defaults.",
+          "severity": "high",
+          "explanation": "Resetting ACLs recursively removes all explicitly set permissions and reverts to inherited permissions. This can break applications that require specific ACL entries to function."
+        },
+        {
+          "name": "takeown-recursive",
+          "regex": "(?i)\\btakeown\\s+.*/[rR]",
+          "reason": "takeown /R recursively changes file ownership. Verify the target path.",
+          "severity": "high",
+          "explanation": "takeown /R recursively takes ownership of all files under the specified path. This changes the security descriptor of every file and can break system services that depend on specific ownership.\n\nCheck current ownership first:\n  icacls <path>",
+          "suggestions": [
+            {
+              "command": "icacls {path}",
+              "description": "Check current ownership before modifying",
+              "platform": "windows"
+            },
+            {
+              "command": "takeown /F {specific-file}",
+              "description": "Take ownership of a single file instead of recursively",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "attrib-recursive-system",
+          "regex": "(?i)\\battrib\\s+.*(?:-[sShH]).*(?:/[sS]|/[dD])",
+          "reason": "Recursively removing system/hidden attributes can expose protected system files.",
+          "severity": "high",
+          "explanation": "Removing the System (S) or Hidden (H) attributes recursively with /S (process subdirectories) and /D (process directories) can expose protected operating system files to modification or deletion."
+        },
+        {
+          "name": "set-executionpolicy-bypass",
+          "regex": "(?i)Set-ExecutionPolicy\\s+(?:Unrestricted|Bypass)",
+          "reason": "Setting PowerShell execution policy to Unrestricted or Bypass removes script execution restrictions.",
+          "severity": "high",
+          "explanation": "The PowerShell execution policy is a safety feature that controls which scripts can run. Setting it to Unrestricted or Bypass allows any script to execute without verification, including potentially malicious downloaded scripts.\n\nCheck current policy:\n  Get-ExecutionPolicy -List",
+          "suggestions": [
+            {
+              "command": "Get-ExecutionPolicy -List",
+              "description": "Check current execution policy before changing",
+              "platform": "windows"
+            },
+            {
+              "command": "Set-ExecutionPolicy RemoteSigned",
+              "description": "Allow local scripts but require signatures for downloaded scripts (safer)",
+              "platform": "windows"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows.disk",
+      "name": "Windows Disk Operations",
+      "description": "Protects against destructive Windows disk operations (diskpart, format, Clear-Disk, Initialize-Disk)",
+      "keywords": [
+        "diskpart",
+        "format",
+        "Clear-Disk",
+        "Initialize-Disk",
+        "Remove-Partition"
+      ],
+      "safe_patterns": [
+        {
+          "name": "format-help",
+          "regex": "(?i)^format\\s+/\\?"
+        },
+        {
+          "name": "diskpart-help",
+          "regex": "(?i)^diskpart\\s+/\\?"
+        },
+        {
+          "name": "get-disk",
+          "regex": "(?i)^Get-(?:Disk|Partition|Volume)\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "diskpart",
+          "regex": "(?i)\\bdiskpart\\b",
+          "reason": "diskpart can modify partition tables and format drives. This is extremely dangerous.",
+          "severity": "critical",
+          "explanation": "diskpart is a powerful disk management tool that can:\n- Delete partitions\n- Format drives\n- Clean (wipe) entire disks\n- Modify the Master Boot Record\n\nEven in interactive mode, a single wrong command can destroy all data on a disk. Scripted mode (diskpart /s script.txt) is especially dangerous as it executes commands without confirmation.\n\nUse Disk Management GUI (diskmgmt.msc) for safer disk operations.",
+          "suggestions": [
+            {
+              "command": "Get-Disk | Format-Table",
+              "description": "List disks safely via PowerShell",
+              "platform": "windows"
+            },
+            {
+              "command": "Get-Partition | Format-Table",
+              "description": "List partitions safely via PowerShell",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "format-drive",
+          "regex": "(?i)^format\\s+[A-Za-z]:",
+          "reason": "format will erase all data on the specified drive.",
+          "severity": "critical",
+          "explanation": "The format command creates a new filesystem on the specified drive, destroying all existing data. This is irreversible.\n\n- format C: would destroy the operating system\n- format with /Q (quick) is faster but equally destructive\n- All data on the drive will be permanently lost",
+          "suggestions": [
+            {
+              "command": "vol {drive}:",
+              "description": "Check drive label before formatting",
+              "platform": "windows"
+            },
+            {
+              "command": "dir {drive}:\\",
+              "description": "List drive contents to verify it's the right drive",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "clear-disk",
+          "regex": "(?i)Clear-Disk\\b",
+          "reason": "Clear-Disk erases all data and partitions from a disk.",
+          "severity": "critical",
+          "explanation": "Clear-Disk removes all partition and volume information from the specified disk, effectively wiping it completely. This is irreversible and destroys all data on the disk.",
+          "suggestions": [
+            {
+              "command": "Get-Disk | Format-Table Number,FriendlyName,Size,PartitionStyle",
+              "description": "List disks to identify the correct one",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "initialize-disk",
+          "regex": "(?i)Initialize-Disk\\b",
+          "reason": "Initialize-Disk sets up a new partition style, which can overwrite existing partition data.",
+          "severity": "high",
+          "explanation": "Initialize-Disk writes a new partition table to the specified disk. If the disk already has partitions, this can make existing data inaccessible.\n\nCheck disk status first:\n  Get-Disk",
+          "suggestions": [
+            {
+              "command": "Get-Disk",
+              "description": "List disks and their current partition style",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "remove-partition",
+          "regex": "(?i)Remove-Partition\\b",
+          "reason": "Remove-Partition deletes a disk partition and all data on it.",
+          "severity": "critical",
+          "explanation": "Remove-Partition deletes the specified partition from a disk. All data on that partition will be permanently lost. If targeting the system partition, Windows will become unbootable.",
+          "suggestions": [
+            {
+              "command": "Get-Partition -DiskNumber {n} | Format-Table",
+              "description": "List partitions on the disk before removing",
+              "platform": "windows"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows.registry",
+      "name": "Windows Registry",
+      "description": "Protects against destructive Windows registry operations (reg delete, reg import)",
+      "keywords": [
+        "reg"
+      ],
+      "safe_patterns": [
+        {
+          "name": "reg-query",
+          "regex": "(?i)^reg\\s+query\\b"
+        },
+        {
+          "name": "reg-export",
+          "regex": "(?i)^reg\\s+export\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "reg-delete-system-hive",
+          "regex": "(?i)\\breg\\s+delete\\s+(?:HKLM|HKEY_LOCAL_MACHINE)\\\\(?:SYSTEM|SOFTWARE|SAM|SECURITY)",
+          "reason": "Deleting critical registry hives can render Windows unbootable.",
+          "severity": "critical",
+          "explanation": "The HKLM\\SYSTEM, HKLM\\SOFTWARE, HKLM\\SAM, and HKLM\\SECURITY registry hives contain critical Windows configuration:\n\n- SYSTEM: Boot configuration, hardware drivers, service configuration\n- SOFTWARE: Installed application settings, Windows configuration\n- SAM: User account database (passwords, security identifiers)\n- SECURITY: Local security policy, audit settings\n\nDeleting keys from these hives can make Windows unable to boot, break all installed applications, or lock out all user accounts.",
+          "suggestions": [
+            {
+              "command": "reg query {key}",
+              "description": "View registry key contents before deleting",
+              "platform": "windows"
+            },
+            {
+              "command": "reg export {key} backup.reg",
+              "description": "Export a backup before making changes",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "reg-delete-force",
+          "regex": "(?i)\\breg\\s+delete\\s+.*\\s+/f\\b",
+          "reason": "reg delete /f silently deletes registry keys without confirmation.",
+          "severity": "high",
+          "explanation": "reg delete /f suppresses the confirmation prompt and immediately deletes the specified registry key and all its subkeys. This is irreversible without a prior backup.\n\nAlways export a backup first:\n  reg export <key> backup.reg",
+          "suggestions": [
+            {
+              "command": "reg query {key}",
+              "description": "View key contents before deleting",
+              "platform": "windows"
+            },
+            {
+              "command": "reg export {key} backup.reg",
+              "description": "Export a backup before deleting",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "reg-import",
+          "regex": "(?i)\\breg\\s+import\\b",
+          "reason": "reg import applies bulk registry changes from a file. Verify the .reg file contents.",
+          "severity": "high",
+          "explanation": "reg import merges a .reg file into the registry. The file can contain any number of registry modifications — adding, changing, or deleting keys and values. A malicious or incorrect .reg file can destabilize the system.\n\nReview the .reg file contents before importing:\n  type <file.reg>",
+          "suggestions": [
+            {
+              "command": "type {file}",
+              "description": "Review .reg file contents before importing",
+              "platform": "windows"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows.firewall",
+      "name": "Windows Firewall",
+      "description": "Protects against disabling or resetting the Windows Firewall (netsh, Set-NetFirewallProfile)",
+      "keywords": [
+        "netsh",
+        "Set-NetFirewallProfile",
+        "Disable-NetAdapter"
+      ],
+      "safe_patterns": [
+        {
+          "name": "netsh-show",
+          "regex": "(?i)^netsh\\s+advfirewall\\s+show\\b"
+        },
+        {
+          "name": "netsh-firewall-show",
+          "regex": "(?i)^netsh\\s+advfirewall\\s+firewall\\s+show\\b"
+        },
+        {
+          "name": "get-firewall",
+          "regex": "(?i)^Get-NetFirewall(?:Profile|Rule)\\b"
+        },
+        {
+          "name": "get-adapter",
+          "regex": "(?i)^Get-NetAdapter\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "netsh-firewall-disable",
+          "regex": "(?i)\\bnetsh\\s+advfirewall\\s+set\\s+.*state\\s+off",
+          "reason": "Disabling the Windows Firewall exposes the system to network attacks.",
+          "severity": "critical",
+          "explanation": "Disabling the Windows Firewall removes the primary network-level protection for the machine. The system becomes vulnerable to unauthorized inbound connections, port scanning, and network-based attacks.\n\nCheck current firewall status:\n  netsh advfirewall show allprofiles",
+          "suggestions": [
+            {
+              "command": "netsh advfirewall show allprofiles",
+              "description": "Check current firewall status",
+              "platform": "windows"
+            },
+            {
+              "command": "netsh advfirewall firewall add rule name=\"AllowApp\" dir=in action=allow program=\"{path}\"",
+              "description": "Add a specific firewall rule instead of disabling entirely",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "netsh-firewall-reset",
+          "regex": "(?i)\\bnetsh\\s+advfirewall\\s+reset\\b",
+          "reason": "Resetting the firewall removes all custom rules and restores defaults.",
+          "severity": "high",
+          "explanation": "netsh advfirewall reset removes all custom firewall rules and restores the default Windows Firewall configuration. Any application-specific rules, port forwards, or custom security policies will be lost.\n\nExport current rules first:\n  netsh advfirewall export backup.wfw",
+          "suggestions": [
+            {
+              "command": "netsh advfirewall export backup.wfw",
+              "description": "Export current firewall rules before resetting",
+              "platform": "windows"
+            },
+            {
+              "command": "netsh advfirewall show allprofiles",
+              "description": "Review current configuration first",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "set-firewall-disable",
+          "regex": "(?i)Set-NetFirewallProfile\\s+.*-Enabled\\s+(?:False|\\$false|0)",
+          "reason": "Disabling the Windows Firewall via PowerShell exposes the system to network attacks.",
+          "severity": "critical",
+          "explanation": "This PowerShell command disables the Windows Firewall for one or more network profiles (Domain, Private, Public). This has the same effect as netsh advfirewall set ... state off.",
+          "suggestions": [
+            {
+              "command": "Get-NetFirewallProfile | Format-Table Name,Enabled",
+              "description": "Check current firewall profile status",
+              "platform": "windows"
+            }
+          ]
+        },
+        {
+          "name": "disable-netadapter",
+          "regex": "(?i)Disable-NetAdapter\\b",
+          "reason": "Disabling a network adapter will drop all network connectivity on that interface.",
+          "severity": "high",
+          "explanation": "Disabling a network adapter immediately drops all network connectivity through that interface. If this is the primary network interface and you are connected remotely, you will lose access to the machine.",
+          "suggestions": [
+            {
+              "command": "Get-NetAdapter | Format-Table Name,Status,LinkSpeed",
+              "description": "List network adapters and their status",
+              "platform": "windows"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
