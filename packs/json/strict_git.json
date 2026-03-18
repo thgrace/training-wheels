@@ -1,0 +1,122 @@
+{
+  "category": "strict_git",
+  "packs": [
+    {
+      "id": "strict_git",
+      "name": "Strict Git",
+      "description": "Stricter git protections: blocks all force pushes, rebases, and history rewriting operations",
+      "keywords": [
+        "git"
+      ],
+      "safe_patterns": [
+        {
+          "name": "git-status",
+          "regex": "git\\s+status"
+        },
+        {
+          "name": "git-log",
+          "regex": "git\\s+log"
+        },
+        {
+          "name": "git-diff",
+          "regex": "git\\s+diff"
+        },
+        {
+          "name": "git-show",
+          "regex": "git\\s+show"
+        },
+        {
+          "name": "git-branch-list",
+          "regex": "git\\s+branch\\s*$\\|git\\s+branch\\s+-[alv]"
+        },
+        {
+          "name": "git-remote-v",
+          "regex": "git\\s+remote\\s+-v"
+        },
+        {
+          "name": "git-fetch",
+          "regex": "git\\s+fetch"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "push-force-any",
+          "regex": "git\\s+push\\s+.*(?:--force|--force-with-lease|-f\\b)",
+          "reason": "Force push (even with --force-with-lease) can rewrite remote history. Disabled in strict mode.",
+          "severity": "high",
+          "explanation": "Force pushing rewrites remote branch history, which can cause collaborators to lose commits. Even --force-with-lease, which is safer, can overwrite work if not used carefully. In strict mode, all force pushes are blocked."
+        },
+        {
+          "name": "rebase",
+          "regex": "git\\s+rebase\\b",
+          "reason": "git rebase rewrites commit history. Disabled in strict mode.",
+          "severity": "high",
+          "explanation": "Rebase rewrites commit history by replaying commits on top of another base. When done on shared branches, this causes diverged history for other contributors."
+        },
+        {
+          "name": "commit-amend",
+          "regex": "git\\s+commit\\s+.*--amend",
+          "reason": "git commit --amend rewrites the last commit. Disabled in strict mode.",
+          "severity": "medium",
+          "explanation": "Amending a commit rewrites it with a new hash. If the original commit was already pushed to a shared branch, this creates a diverged history that requires a force push to reconcile."
+        },
+        {
+          "name": "cherry-pick",
+          "regex": "git\\s+cherry-pick\\b",
+          "reason": "git cherry-pick can introduce duplicate commits. Review carefully.",
+          "severity": "medium",
+          "explanation": "Cherry-picking copies commits from one branch to another, creating duplicate commits with different hashes. This can complicate merges and create confusing history."
+        },
+        {
+          "name": "filter-branch",
+          "regex": "git\\s+filter-branch\\b",
+          "reason": "git filter-branch rewrites entire repository history. Extremely dangerous!",
+          "severity": "critical",
+          "explanation": "filter-branch rewrites every commit in the repository's history. All collaborators will have diverged history and must re-clone or do complex rebases. Once pushed, this is very difficult to recover from."
+        },
+        {
+          "name": "filter-repo",
+          "regex": "git\\s+filter-repo\\b",
+          "reason": "git filter-repo rewrites repository history. Review carefully.",
+          "severity": "critical",
+          "explanation": "filter-repo is the modern replacement for filter-branch and rewrites repository history. All collaborators will have diverged history after this operation."
+        },
+        {
+          "name": "reflog-expire",
+          "regex": "git\\s+reflog\\s+expire",
+          "reason": "git reflog expire removes reflog entries needed for recovery.",
+          "severity": "high",
+          "explanation": "The reflog is git's safety net that allows recovery of commits even after hard resets, branch deletions, or other destructive operations. Expiring reflog entries removes this recovery capability."
+        },
+        {
+          "name": "gc-aggressive",
+          "regex": "git\\s+gc\\s+.*--(?:aggressive|prune)",
+          "reason": "git gc with aggressive/prune options can remove recoverable objects.",
+          "severity": "high",
+          "explanation": "Running git gc with --aggressive or --prune can permanently remove loose objects that could otherwise be used to recover lost commits."
+        },
+        {
+          "name": "worktree-remove",
+          "regex": "git\\s+worktree\\s+remove",
+          "reason": "git worktree remove deletes a linked working tree.",
+          "severity": "medium",
+          "explanation": "Removing a worktree deletes the linked working directory. Any uncommitted changes in that worktree will be lost."
+        },
+        {
+          "name": "submodule-deinit",
+          "regex": "git\\s+submodule\\s+deinit",
+          "reason": "git submodule deinit removes submodule configuration.",
+          "severity": "medium",
+          "explanation": "deinit removes the submodule's working directory content and clears its configuration from .git/config. The submodule definition in .gitmodules remains but the local checkout is removed."
+        },
+        {
+          "name": "push-master",
+          "regex": "git\\s+(?:\\S+\\s+)*push\\s+(?:.*[\\s:])?master(?:\\s|$)",
+          "reason": "Direct push to master is blocked. Use a Pull Request.",
+          "severity": "high",
+          "explanation": "Pushing directly to the master branch bypasses code review and CI checks. Use a feature branch and open a Pull Request to merge changes into master."
+        }
+      ]
+    }
+  ]
+}

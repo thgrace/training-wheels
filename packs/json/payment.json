@@ -1,0 +1,223 @@
+{
+  "category": "payment",
+  "packs": [
+    {
+      "id": "payment.stripe",
+      "name": "Stripe",
+      "description": "Protects against destructive Stripe CLI/API operations like deleting webhook endpoints and customers, or rotating API keys without coordination.",
+      "keywords": [
+        "stripe",
+        "api.stripe.com"
+      ],
+      "safe_patterns": [
+        {
+          "name": "stripe-listen",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+listen\\b"
+        },
+        {
+          "name": "stripe-customers-list",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+customers\\s+list\\b"
+        },
+        {
+          "name": "stripe-products-list",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+products\\s+list\\b"
+        },
+        {
+          "name": "stripe-payments-list",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+payments\\s+list\\b"
+        },
+        {
+          "name": "stripe-logs-tail",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+logs\\s+tail\\b"
+        },
+        {
+          "name": "stripe-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*api\\.stripe\\.com.*\\/v1\\/"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "stripe-webhook-endpoints-delete",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+webhook[_-]endpoints\\s+delete\\b",
+          "reason": "stripe webhook_endpoints delete removes a Stripe webhook endpoint, breaking notifications.",
+          "severity": "high",
+          "explanation": "Deleting a webhook endpoint stops Stripe event notifications for that URL. Your application will miss payment confirmations, subscription updates, dispute alerts, and other critical events until the webhook is recreated.\n\nSafer alternatives:\n- stripe webhook_endpoints list to verify before deletion\n- Disable the endpoint instead of deleting if temporary\n- Ensure backup webhook is configured before deletion"
+        },
+        {
+          "name": "stripe-customers-delete",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+customers\\s+delete\\b",
+          "reason": "stripe customers delete permanently deletes a customer.",
+          "severity": "critical",
+          "explanation": "Deleting a customer removes their payment methods, subscriptions, and billing history from Stripe. This can affect compliance records, break recurring billing, and lose valuable customer data that cannot be recovered.\n\nSafer alternatives:\n- Cancel subscriptions and mark customer inactive instead\n- stripe customers retrieve to verify customer data first\n- Export customer data before deletion for compliance"
+        },
+        {
+          "name": "stripe-products-delete",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+products\\s+delete\\b",
+          "reason": "stripe products delete permanently deletes a product.",
+          "severity": "high",
+          "explanation": "Deleting a product removes it from your catalog. Associated prices remain but become orphaned. Existing subscriptions using this product may behave unexpectedly and invoice line items will lose product metadata.\n\nSafer alternatives:\n- Archive the product by setting active=false instead\n- stripe products retrieve to verify before deletion\n- Ensure no active subscriptions reference this product"
+        },
+        {
+          "name": "stripe-prices-delete",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+prices\\s+delete\\b",
+          "reason": "stripe prices delete permanently deletes a price.",
+          "severity": "high",
+          "explanation": "Deleting a price removes the pricing configuration. Active subscriptions using this price will fail to renew or behave unexpectedly. New purchases cannot use this price ID, breaking checkout integrations that reference it.\n\nSafer alternatives:\n- Archive the price by setting active=false instead\n- Create a new price rather than modifying existing one\n- Check for active subscriptions using this price first"
+        },
+        {
+          "name": "stripe-coupons-delete",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+coupons\\s+delete\\b",
+          "reason": "stripe coupons delete permanently deletes a coupon.",
+          "severity": "high",
+          "explanation": "Deleting a coupon prevents new redemptions and removes the discount from future invoices. Customers with the coupon applied to their subscription will lose the discount on their next renewal.\n\nSafer alternatives:\n- Set coupon max_redemptions or redeem_by to expire naturally\n- stripe coupons retrieve to verify before deletion\n- Communicate discount changes to affected customers first"
+        },
+        {
+          "name": "stripe-api-keys-roll",
+          "regex": "\\bstripe\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api[_-]keys\\s+roll\\b",
+          "reason": "stripe api_keys roll rotates API keys; coordinate to avoid outages.",
+          "severity": "medium",
+          "explanation": "Rolling API keys invalidates the old key immediately. Any service using the old key will fail authentication until updated. In production, this can cause payment processing outages if not coordinated across all systems.\n\nSafer alternatives:\n- Deploy new key to all services before rolling\n- Use key restriction to limit blast radius\n- Test key rotation in test mode first"
+        },
+        {
+          "name": "stripe-api-delete",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.stripe\\.com.*\\/v1\\/",
+          "reason": "Stripe API DELETE calls remove Stripe resources.",
+          "severity": "high",
+          "explanation": "Direct API DELETE calls permanently remove Stripe resources without CLI confirmation prompts. This bypasses safety checks and can delete customers, products, subscriptions, or other critical payment data.\n\nSafer alternatives:\n- Use stripe CLI which provides confirmation prompts\n- GET the resource first to verify ID is correct\n- Test in Stripe test mode before production"
+        }
+      ]
+    },
+    {
+      "id": "payment.braintree",
+      "name": "Braintree",
+      "description": "Protects against destructive Braintree/PayPal payment operations like deleting customers or cancelling subscriptions via API/SDK calls.",
+      "keywords": [
+        "braintree",
+        "braintreegateway.com",
+        "braintree.",
+        "gateway.customer.",
+        "gateway.merchant_account.",
+        "gateway.payment_method.",
+        "gateway.subscription."
+      ],
+      "safe_patterns": [
+        {
+          "name": "braintree-customer-find",
+          "regex": "\\bbraintree\\.Customer\\.find\\b"
+        },
+        {
+          "name": "braintree-customer-search",
+          "regex": "\\bgateway\\.customer\\.search\\b"
+        },
+        {
+          "name": "braintree-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*braintreegateway\\.com"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "braintree-api-delete",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*braintreegateway\\.com",
+          "reason": "Braintree API DELETE calls remove payment resources (customers, webhooks, etc.).",
+          "severity": "high",
+          "explanation": "Direct API DELETE calls to Braintree permanently remove payment resources without SDK safety checks. This can delete customers, payment methods, or webhook configurations with no confirmation.\n\nSafer alternatives:\n- Use Braintree SDK which may provide additional validation\n- GET the resource first to verify ID is correct\n- Test in sandbox environment before production"
+        },
+        {
+          "name": "braintree-customer-delete",
+          "regex": "\\bbraintree\\.Customer\\.delete\\b",
+          "reason": "braintree.Customer.delete permanently deletes a Braintree customer.",
+          "severity": "critical",
+          "explanation": "Deleting a Braintree customer removes their payment methods, transaction history references, and vault records. This can break billing reconciliation and compliance audit trails. Subscriptions for this customer will also fail.\n\nSafer alternatives:\n- Archive customer in your application instead\n- Cancel subscriptions and remove payment methods first\n- braintree.Customer.find() to verify customer before deletion"
+        },
+        {
+          "name": "braintree-gateway-customer-delete",
+          "regex": "\\bgateway\\.customer\\.delete\\b",
+          "reason": "gateway.customer.delete permanently deletes a Braintree customer.",
+          "severity": "critical",
+          "explanation": "Deleting a customer via gateway removes all their payment methods and vault data from Braintree. Associated subscriptions will fail to renew and transaction history loses customer context.\n\nSafer alternatives:\n- Mark customer inactive in your system instead\n- gateway.customer.find() to verify before deletion\n- Export customer data for compliance before deletion"
+        },
+        {
+          "name": "braintree-merchant-account-delete",
+          "regex": "\\bgateway\\.merchant_account\\.delete\\b",
+          "reason": "gateway.merchant_account.delete removes a Braintree merchant account.",
+          "severity": "critical",
+          "explanation": "Deleting a merchant account stops payment processing for that account. Any sub-merchants or payment flows using this account will fail. Pending settlements may be affected, impacting cash flow.\n\nSafer alternatives:\n- Contact Braintree support for proper account closure\n- Verify no active transactions are pending\n- Transfer sub-merchants to another account first"
+        },
+        {
+          "name": "braintree-payment-method-delete",
+          "regex": "\\bgateway\\.payment_method\\.delete\\b",
+          "reason": "gateway.payment_method.delete removes a stored payment method.",
+          "severity": "high",
+          "explanation": "Deleting a payment method removes the card or bank account from the vault. Subscriptions using this payment method will fail on next renewal. Customers will need to re-enter payment details to continue service.\n\nSafer alternatives:\n- Update subscription to use a different payment method first\n- gateway.payment_method.find() to verify before deletion\n- Notify customer before removing their payment method"
+        },
+        {
+          "name": "braintree-subscription-cancel",
+          "regex": "\\bgateway\\.subscription\\.cancel\\b",
+          "reason": "gateway.subscription.cancel cancels a subscription, impacting billing.",
+          "severity": "high",
+          "explanation": "Cancelling a subscription immediately stops recurring billing. The customer loses access at the end of their current period (or immediately, depending on configuration). This may require manual intervention to restore.\n\nSafer alternatives:\n- gateway.subscription.find() to verify subscription details first\n- Consider pausing or updating instead of cancelling\n- Communicate cancellation to customer before processing"
+        }
+      ]
+    },
+    {
+      "id": "payment.square",
+      "name": "Square",
+      "description": "Protects against destructive Square CLI/API operations like deleting catalog objects or customers (which can break payment flows).",
+      "keywords": [
+        "square",
+        "api.squareup.com"
+      ],
+      "safe_patterns": [
+        {
+          "name": "square-catalog-list",
+          "regex": "\\bsquare\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+catalog\\s+list\\b"
+        },
+        {
+          "name": "square-customers-list",
+          "regex": "\\bsquare\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+customers\\s+list\\b"
+        },
+        {
+          "name": "square-api-get",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+GET\\b.*api\\.squareup\\.com"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "square-catalog-delete",
+          "regex": "\\bsquare\\b(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+catalog\\s+delete\\b",
+          "reason": "square catalog delete removes catalog objects, impacting products and inventory.",
+          "severity": "high",
+          "explanation": "Deleting catalog objects removes products, variations, modifiers, or categories from your Square catalog. POS systems, online stores, and invoicing that reference these items will show errors or missing products.\n\nSafer alternatives:\n- square catalog list to review items first\n- Set item visibility to hidden instead of deleting\n- Export catalog backup before bulk deletions"
+        },
+        {
+          "name": "square-api-delete-catalog-object",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.squareup\\.com[^\\s]*?/v2/catalog/object/[^\\s]+",
+          "reason": "Square API DELETE /v2/catalog/object/{id} deletes a catalog object.",
+          "severity": "high",
+          "explanation": "Direct API deletion of catalog objects bypasses CLI safety checks. Products, categories, taxes, discounts, and modifiers can be permanently removed, breaking POS workflows and e-commerce integrations.\n\nSafer alternatives:\n- GET /v2/catalog/object/{id} to verify before deletion\n- Use batch operations with careful ID validation\n- Test in Square sandbox environment first"
+        },
+        {
+          "name": "square-api-delete-customer",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.squareup\\.com[^\\s]*?/v2/customers/[^\\s]+",
+          "reason": "Square API DELETE /v2/customers/{id} deletes a customer.",
+          "severity": "critical",
+          "explanation": "Deleting a Square customer removes their profile, cards on file, and loyalty data. Transaction history loses customer context, affecting reporting and CRM. Repeat customers will need to re-register.\n\nSafer alternatives:\n- GET /v2/customers/{id} to verify customer before deletion\n- Remove cards on file instead of full deletion\n- Export customer data before deletion for compliance"
+        },
+        {
+          "name": "square-api-delete-location",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.squareup\\.com[^\\s]*?/v2/locations/[^\\s]+",
+          "reason": "Square API DELETE /v2/locations/{id} deletes a location.",
+          "severity": "critical",
+          "explanation": "Deleting a location removes a business location from Square. This affects payment processing, inventory tracking, and employee management for that location. Transactions cannot be processed at a deleted location.\n\nSafer alternatives:\n- Set location status to inactive instead of deleting\n- GET /v2/locations/{id} to verify location details first\n- Transfer inventory and employees before deletion"
+        },
+        {
+          "name": "square-api-delete-webhook-subscription",
+          "regex": "(?i)curl\\s+.*(?:-X|--request)\\s+DELETE\\b.*api\\.squareup\\.com[^\\s]*?/v2/webhooks/subscriptions/[^\\s]+",
+          "reason": "Square API DELETE /v2/webhooks/subscriptions/{id} deletes a webhook subscription.",
+          "severity": "high",
+          "explanation": "Deleting a webhook subscription stops event notifications for payments, refunds, inventory changes, and other business events. Your application will miss critical updates until the subscription is recreated.\n\nSafer alternatives:\n- Disable the webhook subscription instead of deleting\n- GET /v2/webhooks/subscriptions to verify subscription ID\n- Set up backup notification channels before removal"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - misspell
+    - prealloc
+    - unconvert
+    - unparam
+  settings:
+    gocritic:
+      enabled-checks:
+        - dupImport
+        - nestingReduce
+        - unnamedResult
+    misspell:
+      locale: US
+    prealloc:
+      simple: true
+      for-loops: true
+  exclusions:
+    paths:
+      - packs/json
+    rules:
+      # Test files: allow unchecked os.Setenv, os.Unsetenv, os.Mkdir.
+      - path: _test\.go
+        linters:
+          - errcheck
+      # CLI commands use os.Exit after defer — this is intentional.
+      - text: "exitAfterDefer"
+        linters:
+          - gocritic
+      # Deferred Close/Remove calls — error is intentionally ignored.
+      - text: "Error return value of `.*\\.Close` is not checked"
+        linters:
+          - errcheck
+      - text: "Error return value of `os\\.Remove` is not checked"
+        linters:
+          - errcheck

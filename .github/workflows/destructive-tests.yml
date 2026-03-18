@@ -1,0 +1,39 @@
+name: Destructive Command Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  destructive-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build tw
+        run: go build -o tw ./cmd/tw/
+
+      - name: Install tw
+        run: sudo mv tw /usr/local/bin/tw
+
+      - name: Configure tw for tests
+        run: echo "TW_PACKS_ENABLED=core,database,cloud,containers,kubernetes,infrastructure,system,remote,secrets,package_managers,platform,cicd,search,interpreters,dns,email,messaging,monitoring,storage,payment,cdn,apigateway,backup,featureflags,loadbalancer,ai,strict_git,windows" >> "$GITHUB_ENV"
+
+      - name: Run destructive command tests
+        run: .github/scripts/ci-destructive-tests.sh
+
+      - name: Upload failure report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: destructive-test-failures
+          path: /tmp/tw-destructive-failures.txt
