@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/spf13/cobra"
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/packs"
 	"github.com/thgrace/training-wheels/internal/skills"
-	"github.com/spf13/cobra"
 )
 
 var doctorFormat string
@@ -113,19 +113,13 @@ func checkHooksInstalled() []checkResult {
 		}}
 	}
 
-	twExe := "tw"
-	if runtime.GOOS == "windows" {
-		twExe = "tw.exe"
-	}
-	twPath := filepath.Join(home, ".tw", "bin", twExe)
-
 	var results []checkResult
 	for _, a := range agents {
 		userPath := agentSettingsPath(a, false, home)
 		projectPath := agentSettingsPath(a, true, home)
 
-		userInstalled := isAgentHookInstalled(a, userPath, twPath)
-		projectInstalled := isAgentHookInstalled(a, projectPath, twPath)
+		userInstalled := isAgentHookInstalled(a, userPath, "tw")
+		projectInstalled := isAgentHookInstalled(a, projectPath, "tw")
 
 		name := "hook:" + a.Name
 		if userInstalled || projectInstalled {
@@ -150,7 +144,7 @@ func checkHooksInstalled() []checkResult {
 	return results
 }
 
-func isAgentHookInstalled(a agentDef, path, twPath string) bool {
+func isAgentHookInstalled(a agentDef, path, twHookRef string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
@@ -159,7 +153,7 @@ func isAgentHookInstalled(a agentDef, path, twPath string) bool {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return false
 	}
-	return a.HookExists(settings, twPath)
+	return a.HookExists(settings, twHookRef)
 }
 
 func checkPacks() checkResult {

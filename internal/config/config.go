@@ -58,7 +58,7 @@ type Config struct {
 
 // DefaultConfig returns a Config with compiled defaults.
 func DefaultConfig() *Config {
-	enabled := []string{"core"}
+	enabled := []string{"core.git", "core.filesystem", "core.tw"}
 	if runtime.GOOS == "windows" {
 		enabled = append(enabled, "windows")
 	}

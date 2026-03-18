@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/exitcodes"
 	"github.com/thgrace/training-wheels/internal/logger"
 	"github.com/thgrace/training-wheels/internal/osutil"
 	"github.com/thgrace/training-wheels/internal/skills"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -24,7 +25,7 @@ var (
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install TW hook into AI agent settings",
+	Short: "Install TW hooks and skills into AI agent settings",
 	RunE:  runInstall,
 }
 
@@ -40,7 +41,7 @@ var (
 
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Remove TW hook from AI agent settings",
+	Short: "Remove TW hooks and skills from AI agent settings",
 	RunE:  runUninstall,
 }
 
@@ -56,42 +57,13 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		os.Exit(exitcodes.IOError)
 	}
 
-	// 1. Install the binary to ~/.tw/bin/tw
-	twBinDir := filepath.Join(home, ".tw", "bin")
-	if err := os.MkdirAll(twBinDir, 0o755); err != nil {
-		logger.Error("error creating directory", "dir", twBinDir, "error", err)
+	if _, err := exec.LookPath("tw"); err != nil {
+		logger.Error("cannot install hooks", "error", "tw not found in PATH; install it first and restart your shell")
 		os.Exit(exitcodes.IOError)
 	}
 
-	self, err := os.Executable()
-	if err != nil {
-		logger.Error("cannot determine current executable path", "error", err)
-		os.Exit(exitcodes.IOError)
-	}
-
-	twExe := "tw"
-	if filepath.Ext(self) == ".exe" || os.PathSeparator == '\\' {
-		twExe = "tw.exe"
-	}
-
-	twPath := filepath.Join(twBinDir, twExe)
-	if err := copyBinary(self, twPath); err != nil {
-		logger.Error("error installing binary", "to", twPath, "error", err)
-		os.Exit(exitcodes.IOError)
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "TW binary installed to %s\n", twPath)
-
-	// 1.1 Create user-level config if it doesn't exist.
+	// 1. Create user-level config if it doesn't exist.
 	createUserConfig(cmd.OutOrStdout(), home)
-
-	// 1.5 Add ~/.tw/bin to the user's PATH.
-	updatedPath, err := osutil.AddToPath(twBinDir)
-	if err != nil {
-		logger.Warn("could not automatically add TW to your PATH", "error", err)
-		fmt.Fprintf(cmd.OutOrStdout(), "Tip: Manually add %s to your PATH to use 'tw' from any terminal.\n", twBinDir)
-	} else if updatedPath {
-		fmt.Fprintf(cmd.OutOrStdout(), "Added %s to your PATH. Please restart your terminal for changes to take effect.\n", twBinDir)
-	}
 
 	// 2. Install agent skill (cross-client)
 	crossClientDir := filepath.Join(home, skills.SkillRelDir)
@@ -117,29 +89,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	for _, a := range agents {
 		path := agentSettingsPath(a, installProject, home)
-		installForAgent(cmd.OutOrStdout(), a, path, twPath)
+		installForAgent(cmd.OutOrStdout(), a, path, "tw")
 	}
 	return nil
-}
-
-func copyBinary(src, dst string) error {
-	// If src and dst are the same, skip copy.
-	if s, err := filepath.Abs(src); err == nil {
-		if d, err := filepath.Abs(dst); err == nil && s == d {
-			return nil
-		}
-	}
-
-	input, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	// Atomic write.
-	tmpDst := dst + ".tmp"
-	if err := os.WriteFile(tmpDst, input, 0o755); err != nil {
-		return err
-	}
-	return osutil.AtomicRename(tmpDst, dst)
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
@@ -148,12 +100,6 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		logger.Error("cannot determine home directory", "error", err)
 		os.Exit(exitcodes.IOError)
 	}
-
-	twExe := "tw"
-	if os.PathSeparator == '\\' {
-		twExe = "tw.exe"
-	}
-	twPath := filepath.Join(home, ".tw", "bin", twExe)
 
 	filter := parseAgentFilter(uninstallAgentFilter)
 	agents := detectAgents(home, filter)
@@ -165,7 +111,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	for _, a := range agents {
 		path := agentSettingsPath(a, uninstallProject, home)
-		uninstallForAgent(cmd.OutOrStdout(), a, path, twPath)
+		uninstallForAgent(cmd.OutOrStdout(), a, path, "tw")
 	}
 
 	// Remove agent skills from both locations.
@@ -175,24 +121,24 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func installForAgent(out io.Writer, a agentDef, settingsPath, twPath string) {
+func installForAgent(out io.Writer, a agentDef, settingsPath, twHookRef string) {
 	settings, _ := readSettings(settingsPath)
-	if a.HookExists(settings, twPath) {
+	if a.HookExists(settings, twHookRef) {
 		fmt.Fprintf(out, "TW hook already installed in %s  [%s]\n", settingsPath, a.Name)
 		return
 	}
-	a.AddHookEntry(settings, twPath)
+	a.AddHookEntry(settings, twHookRef)
 	writeSettings(settingsPath, settings)
 	fmt.Fprintf(out, "TW hook installed to %s  [%s]\n", settingsPath, a.Name)
 }
 
-func uninstallForAgent(out io.Writer, a agentDef, settingsPath, twPath string) {
+func uninstallForAgent(out io.Writer, a agentDef, settingsPath, twHookRef string) {
 	settings, existed := readSettings(settingsPath)
 	if !existed {
 		fmt.Fprintf(out, "TW hook not found in %s  [%s]\n", settingsPath, a.Name)
 		return
 	}
-	if !a.RemoveHookEntry(settings, twPath) {
+	if !a.RemoveHookEntry(settings, twHookRef) {
 		fmt.Fprintf(out, "TW hook not found in %s  [%s]\n", settingsPath, a.Name)
 		return
 	}

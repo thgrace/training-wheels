@@ -4,16 +4,31 @@ Pre-execution safety hook for AI coding agents. Training Wheels intercepts shell
 
 ## Quick Start
 
-```sh
-# Install
-go install github.com/thgrace/training-wheels/cmd/tw@latest
+Install from the latest GitHub release with [`install.sh`](install.sh):
 
-# Set up the hook in Claude Code
-tw install
+```sh
+curl -fsSL https://raw.githubusercontent.com/thgrace/training-wheels/main/install.sh | sh
+```
+
+The shell installer downloads the correct macOS/Linux release binary and installs it to `/usr/local/bin` when writable, otherwise `~/.local/bin`. Set `TW_INSTALL_DIR` to override the destination or `TW_VERSION` to pin a specific release.
+
+Install on Windows with [`install.ps1`](install.ps1):
+
+```powershell
+irm https://raw.githubusercontent.com/thgrace/training-wheels/main/install.ps1 | iex
+```
+
+The PowerShell installer downloads the correct Windows release binary, installs it under `%LOCALAPPDATA%\Programs\tw\bin` by default, and adds that directory to the user `Path` if needed. Set `TW_INSTALL_DIR` or `TW_VERSION` before running it to override the defaults.
+
+Set up the hook in your agent settings:
+
+```sh
+tw install                   # auto-detect supported agents
+tw install --agent claude    # or target one agent explicitly
 
 # Test it
 tw test "rm -rf /"        # → DENY
-tw test "git status"       # → ALLOW
+tw test "git status"      # → ALLOW
 ```
 
 ## How It Works
@@ -21,7 +36,7 @@ tw test "git status"       # → ALLOW
 Training Wheels runs as a pre-execution hook. When an AI agent tries to run a shell command:
 
 1. The agent's tool-use framework sends the command to TW via stdin
-2. TW evaluates it against 80+ pattern packs covering git, filesystem, databases, Kubernetes, cloud, containers, and more
+2. TW evaluates it against 100+ built-in pattern packs covering git, filesystem, databases, Kubernetes, cloud, containers, CI/CD, package managers, secrets, and more
 3. Safe commands pass through silently (exit 0)
 4. Destructive commands are blocked with an explanation (exit 1)
 
@@ -31,59 +46,64 @@ The evaluation pipeline includes context-aware sanitization — commands like `g
 
 | Command | Description |
 |---|---|
-| `tw hook` | Core hook mode — reads JSON from stdin, outputs allow/deny |
+| `tw hook` | Core hook mode — reads JSON from stdin and returns allow/deny/ask |
 | `tw test <cmd>` | Test if a command would be blocked |
-| `tw install` | Install hook into Claude Code settings |
-| `tw uninstall` | Remove hook from settings |
-| `tw override <cmd>` | Add an override entry (allow or block) |
-| `tw unoverride <id>` | Remove an override entry |
-| `tw override list` | Show all override entries |
+| `tw explain <cmd>` | Show why a command is allowed, denied, or asked |
+| `tw install` | Install TW hooks and skills into detected agent settings |
+| `tw uninstall` | Remove TW hooks and skills from agent settings |
+| `tw allow ...` | Add, list, clear, or remove session, timed, or permanent allow/deny entries |
 | `tw config` | Show resolved configuration |
-| `tw init` | Generate starter `.tw.json` |
-| `tw packs` | List available pattern packs |
-| `tw doctor` | Check installation health |
-| `tw update` | Self-update to latest version |
-| `tw completions` | Generate shell completions (bash/zsh/fish) |
+| `tw packs` | List available packs and whether each one is enabled |
+| `tw doctor` | Check binary, config, hooks, packs, and installed skills |
+| `tw update` | Check for or install the latest version |
 | `tw version` | Print version |
 
-## Overrides
+`tw install` and `tw uninstall` also support `--agent claude,cursor,gemini,copilot` and `--project`.
 
-When Training Wheels blocks a command you know is safe, add an override:
+## Allow Entries
+
+When Training Wheels blocks a command you know is safe, inspect it first, then add an allow entry. Exactly one of `--session`, `--time`, or `--permanent` is required when creating an entry.
 
 ```sh
-# Exact command match (allow)
-tw override "rm -rf ./dist" --reason "Build output cleanup"
+# Explain the match first
+tw explain "git reset --hard HEAD"
 
-# Match by rule ID
-tw override --rule "core.git:reset-hard" --reason "Known safe in this repo"
+# Exact command match for this session
+tw allow --session "rm -rf ./dist"
 
-# Prefix match
-tw override --prefix "make clean" --reason "Standard build task"
+# Allow for a fixed time window
+tw allow --time 4h "git push --force"
 
-# Block a specific command unconditionally
-tw override --block "evil-command" --reason "Never allow this"
+# Permanent exact-command allow
+tw allow --permanent "rm -rf ./dist" --reason "Build output cleanup"
 
-# Remove an entry
-tw unoverride ov-7f3a
+# Permanent prefix or rule match
+tw allow --permanent --prefix "make clean" --reason "Standard build task"
+tw allow --permanent --rule "core.git:reset-hard" --reason "Known safe in this repo"
 
-# List all entries
-tw override list
+# Project-scoped permanent allow
+tw allow --permanent --project "rm -rf ./tmp" --reason "Repo-local cleanup"
+
+# Permanently deny a command
+tw allow --permanent --deny "evil-command" --reason "Never allow this"
+
+# Manage entries
+tw allow --list
+tw allow --remove sa-1a2b
+tw allow --clear
 ```
 
-Overrides are stored in JSON at two levels:
+Permanent entries are stored in JSON at two levels:
 - **Project:** `.tw/overrides.json` (higher precedence)
 - **User:** `~/.tw/overrides.json`
 
+Session and time-scoped entries are stored under `~/.tw/` and can be cleared with `tw allow --clear`.
+
 ## Configuration
 
-Generate a starter config:
+`tw install` creates `~/.tw/config.json` if it does not exist. Use `tw config` to inspect the resolved configuration or `tw config --format json` for machine-readable output.
 
-```sh
-tw init
-```
-
-This creates `.tw.json`:
-
+Example config:
 ```json
 {
   "general": {
@@ -91,34 +111,32 @@ This creates `.tw.json`:
     "max_command_bytes": 131072
   },
   "packs": {
-    "enabled": ["core"],
-    "disabled": []
+    "enabled": ["core.git", "core.filesystem", "core.tw"],
+    "disabled": [],
+    "paths": [],
+    "default_action": "deny",
+    "min_severity": "low"
   },
-  "update": {
-    "url": "https://api.github.com/repos/thgrace/training-wheels/releases/latest"
+  "allow": {
+    "require_reason": false
   }
 }
 ```
 
+TW also auto-loads external packs from `~/.tw/packs` and `.tw/packs`. Add extra files or directories with `packs.paths`.
+
 ### Pack Categories
 
-| Category | What it covers |
-|---|---|
-| `core` | Git, filesystem (rm -rf) — enabled by default |
-| `database` | PostgreSQL, MySQL, MongoDB, Redis, etc. |
-| `kubernetes` | kubectl delete, helm uninstall, etc. |
-| `cloud` | AWS, GCP, Azure destructive operations |
-| `containers` | Docker/Podman system prune, volume rm, etc. |
-| `infrastructure` | Terraform destroy, Ansible, Vagrant, etc. |
-| `storage` | S3 rm, gsutil rm, etc. |
-| `remote` | SSH, SCP with destructive payloads |
+Run `tw packs` to see the full list of pack IDs and enabled status. Common categories include `core`, `database`, `kubernetes`, `cloud`, `containers`, `infrastructure`, `storage`, `remote`, `secrets`, `cicd`, `package_managers`, and `windows`.
 
-Enable more packs in `.tw.json`:
+Enable more packs in `~/.tw/config.json`:
 
 ```json
 {
   "packs": {
-    "enabled": ["core", "database", "kubernetes"]
+    "enabled": ["core.git", "core.filesystem", "core.tw", "database", "kubernetes"],
+    "default_action": "ask",
+    "min_severity": "medium"
   }
 }
 ```
@@ -133,18 +151,10 @@ Enable more packs in `.tw.json`:
 ## Performance
 
 | Path | Target |
-|---|---|
-| Quick-reject (no keyword match) | <5μs |
-| Full pipeline (keyword match → pack eval) | <5ms |
-| Absolute maximum (fail-open) | 200ms |
+|---|--------|
+| Quick-reject (no keyword match) | <5μm   |
+| Full pipeline (keyword match → pack eval) | <20ms  |
+| Absolute maximum (fail-open) | 200ms  |
 
 TW fails open — if evaluation exceeds the timeout, the command is allowed. Safety should never block productivity.
 
-## Building
-
-```sh
-make build          # Build binary
-make test           # Run unit tests
-make smoke          # Run smoke tests in Docker
-make ci             # All checks
-```
