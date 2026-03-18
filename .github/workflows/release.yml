@@ -52,6 +52,7 @@ jobs:
       config-file: .slsa-goreleaser/${{ matrix.os }}-${{ matrix.arch }}.yml
       evaluated-envs: "VERSION:${{needs.args.outputs.version}}"
       upload-assets: true
+      draft-release: "true"
       private-repository: ${{ github.event.repository.private }}
 
   checksums:
@@ -80,4 +81,21 @@ jobs:
         run: |
           gh release upload "${{ github.ref_name }}" \
             artifacts/checksums.txt \
+            --clobber \
             --repo "${{ github.repository }}"
+
+  publish-release:
+    needs: checksums
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_id=$(gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" --jq .id)
+          gh api \
+            --method PATCH \
+            "repos/${{ github.repository }}/releases/${release_id}" \
+            -F draft=false
