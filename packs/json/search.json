@@ -1,0 +1,455 @@
+{
+  "category": "search",
+  "packs": [
+    {
+      "id": "search.elasticsearch",
+      "name": "Elasticsearch",
+      "description": "Protects against destructive Elasticsearch REST API operations like index deletion, delete-by-query, index close, and cluster setting changes.",
+      "keywords": [
+        "elasticsearch",
+        "curl",
+        "http",
+        "9200",
+        "_search",
+        "_cluster",
+        "_cat",
+        "_doc",
+        "_all",
+        "_delete_by_query"
+      ],
+      "safe_patterns": [
+        {
+          "name": "es-curl-get-search",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/(?:[^\\s/]+/)?(?:_search|_count|_mapping|_settings)\\b"
+        },
+        {
+          "name": "es-curl-get-cat",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/_cat/\\S+"
+        },
+        {
+          "name": "es-curl-get-cluster-health",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/_cluster/health\\b"
+        },
+        {
+          "name": "es-http-get-search",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/(?:\\S+/)?(?:_search|_count|_mapping|_settings)\\b"
+        },
+        {
+          "name": "es-http-get-cat",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/_cat/\\S+"
+        },
+        {
+          "name": "es-http-get-cluster-health",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/_cluster/health\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "es-curl-delete-doc",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/[a-z0-9][a-z0-9._-]*/_doc/[^\\s/?]+",
+          "reason": "curl -X DELETE against /_doc deletes a document from Elasticsearch.",
+          "severity": "medium",
+          "explanation": "Deleting a document removes it from the index. The document ID becomes available for reuse. Applications expecting this document will receive 404 errors. Search results will no longer include this document.\n\nSafer alternatives:\n- GET the document first to verify\n- Use document versioning for conflict detection\n- Index a tombstone document instead of deleting"
+        },
+        {
+          "name": "es-curl-delete-by-query",
+          "regex": "curl\\b.*-X\\s*POST\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/[a-z0-9][a-z0-9._-]*/_delete_by_query\\b",
+          "reason": "curl -X POST to _delete_by_query deletes documents matching the query.",
+          "severity": "high",
+          "explanation": "Delete-by-query removes all documents matching the query criteria. A malformed query can delete far more documents than intended. The operation runs asynchronously and cannot be easily cancelled once started.\n\nSafer alternatives:\n- Run the query with _search first to preview matches\n- Use scroll_size to limit batch size\n- Set wait_for_completion=false and monitor progress"
+        },
+        {
+          "name": "es-curl-close-index",
+          "regex": "curl\\b.*-X\\s*POST\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)/_close\\b",
+          "reason": "curl -X POST to _close closes an index, making it unavailable for reads/writes.",
+          "severity": "high",
+          "explanation": "Closing an index blocks all read and write operations. Applications will receive errors when accessing closed indices. Closed indices still consume disk space but release memory. Use _all with extreme caution.\n\nSafer alternatives:\n- GET /_cat/indices to review indices first\n- Close specific indices rather than patterns\n- Use index lifecycle management for automated handling"
+        },
+        {
+          "name": "es-curl-delete-index",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)(?:[\\s?'\"]|$)",
+          "reason": "curl -X DELETE against an Elasticsearch index (or _all/*) deletes data permanently.",
+          "severity": "critical",
+          "explanation": "Deleting an index permanently removes all documents, mappings, and settings. Using _all or * wildcards can delete multiple indices at once. This operation is immediate and irreversible. Data cannot be recovered without snapshots.\n\nSafer alternatives:\n- GET /_cat/indices to review before deletion\n- Create a snapshot before deleting\n- Disable action.destructive_requires_name for safety"
+        },
+        {
+          "name": "es-curl-cluster-settings",
+          "regex": "curl\\b.*-X\\s*PUT\\b.*\\b(?:https?://)?[^\\s'\"]*(?:elastic|:9200)[^\\s'\"]*/_cluster/settings\\b",
+          "reason": "curl -X PUT to /_cluster/settings changes cluster settings and can be dangerous.",
+          "severity": "high",
+          "explanation": "Cluster settings affect all nodes and can impact stability, performance, and data integrity. Persistent settings survive restarts. Changes to allocation, recovery, or shard settings can trigger data movement.\n\nSafer alternatives:\n- GET /_cluster/settings to review current values\n- Use transient settings for testing\n- Test changes on non-production clusters first"
+        },
+        {
+          "name": "es-http-delete-doc",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/[a-z0-9][a-z0-9._-]*/_doc/[^\\s/?]+",
+          "reason": "http DELETE against /_doc deletes a document from Elasticsearch.",
+          "severity": "medium",
+          "explanation": "Deleting a document removes it from the index. The document ID becomes available for reuse. Applications expecting this document will receive 404 errors. Search results will no longer include this document.\n\nSafer alternatives:\n- GET the document first to verify\n- Use document versioning for conflict detection\n- Index a tombstone document instead of deleting"
+        },
+        {
+          "name": "es-http-delete-by-query",
+          "regex": "http\\s+POST\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/[a-z0-9][a-z0-9._-]*/_delete_by_query\\b",
+          "reason": "http POST to _delete_by_query deletes documents matching the query.",
+          "severity": "high",
+          "explanation": "Delete-by-query removes all documents matching the query criteria. A malformed query can delete far more documents than intended. The operation runs asynchronously and cannot be easily cancelled once started.\n\nSafer alternatives:\n- Run the query with _search first to preview matches\n- Use scroll_size to limit batch size\n- Set wait_for_completion=false and monitor progress"
+        },
+        {
+          "name": "es-http-close-index",
+          "regex": "http\\s+POST\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)/_close\\b",
+          "reason": "http POST to _close closes an index, making it unavailable for reads/writes.",
+          "severity": "high",
+          "explanation": "Closing an index blocks all read and write operations. Applications will receive errors when accessing closed indices. Closed indices still consume disk space but release memory. Use _all with extreme caution.\n\nSafer alternatives:\n- GET /_cat/indices to review indices first\n- Close specific indices rather than patterns\n- Use index lifecycle management for automated handling"
+        },
+        {
+          "name": "es-http-delete-index",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)(?:[\\s?]|$)",
+          "reason": "http DELETE against an Elasticsearch index (or _all/*) deletes data permanently.",
+          "severity": "critical",
+          "explanation": "Deleting an index permanently removes all documents, mappings, and settings. Using _all or * wildcards can delete multiple indices at once. This operation is immediate and irreversible. Data cannot be recovered without snapshots.\n\nSafer alternatives:\n- GET /_cat/indices to review before deletion\n- Create a snapshot before deleting\n- Disable action.destructive_requires_name for safety"
+        },
+        {
+          "name": "es-http-cluster-settings",
+          "regex": "http\\s+PUT\\s+(?:https?://)?\\S*(?:elastic|:9200)\\S*/_cluster/settings\\b",
+          "reason": "http PUT to /_cluster/settings changes cluster settings and can be dangerous.",
+          "severity": "high",
+          "explanation": "Cluster settings affect all nodes and can impact stability, performance, and data integrity. Persistent settings survive restarts. Changes to allocation, recovery, or shard settings can trigger data movement.\n\nSafer alternatives:\n- GET /_cluster/settings to review current values\n- Use transient settings for testing\n- Test changes on non-production clusters first"
+        }
+      ]
+    },
+    {
+      "id": "search.opensearch",
+      "name": "OpenSearch",
+      "description": "Protects against destructive OpenSearch REST API operations and AWS CLI domain deletions.",
+      "keywords": [
+        "opensearch",
+        "aws",
+        "curl",
+        "http",
+        "9200",
+        "es.amazonaws.com",
+        "_search",
+        "_cluster",
+        "_cat",
+        "_doc",
+        "_all",
+        "_delete_by_query"
+      ],
+      "safe_patterns": [
+        {
+          "name": "os-curl-get-search",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:opensearch|:9200|es\\.amazonaws\\.com)[^\\s'\"]*/(?:[^\\s/]+/)?(?:_search|_count|_mapping|_settings)\\b"
+        },
+        {
+          "name": "os-curl-get-cat",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:opensearch|:9200|es\\.amazonaws\\.com)[^\\s'\"]*/_cat/\\S+"
+        },
+        {
+          "name": "os-curl-get-cluster-health",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:opensearch|:9200|es\\.amazonaws\\.com)[^\\s'\"]*/_cluster/health\\b"
+        },
+        {
+          "name": "os-http-get-search",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:opensearch|:9200|es\\.amazonaws\\.com)\\S*/(?:\\S+/)?(?:_search|_count|_mapping|_settings)\\b"
+        },
+        {
+          "name": "os-http-get-cat",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:opensearch|:9200|es\\.amazonaws\\.com)\\S*/_cat/\\S+"
+        },
+        {
+          "name": "os-http-get-cluster-health",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:opensearch|:9200|es\\.amazonaws\\.com)\\S*/_cluster/health\\b"
+        },
+        {
+          "name": "aws-opensearch-describe-domain",
+          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+opensearch\\s+describe-domain\\b"
+        },
+        {
+          "name": "aws-opensearch-list-domain-names",
+          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+opensearch\\s+list-domain-names\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "os-curl-delete-doc",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*?(?:opensearch|:9200|es\\.amazonaws\\.com)[^\\s'\"]*?/[a-z0-9][a-z0-9._-]*/_doc/[^\\s/?]+",
+          "reason": "curl -X DELETE against /_doc deletes a document from OpenSearch.",
+          "severity": "medium",
+          "explanation": "Deleting individual documents removes them from search results immediately. While less destructive than bulk operations, this can affect applications expecting the document to exist.\n\nSafer alternatives:\n- GET the document first to verify content\n- Use _update API to mark as deleted instead\n- Ensure document ID is correct before deletion"
+        },
+        {
+          "name": "os-curl-delete-by-query",
+          "regex": "curl\\b.*-X\\s*POST\\b.*\\b(?:https?://)?[^\\s'\"]*(?:opensearch|:9200|es\\.amazonaws\\.com)[^\\s'\"]*/[a-z0-9][a-z0-9._-]*/_delete_by_query\\b",
+          "reason": "curl -X POST to _delete_by_query deletes documents matching the query.",
+          "severity": "high",
+          "explanation": "The _delete_by_query endpoint can delete large numbers of documents at once. A poorly constructed query can remove more data than intended. This operation cannot be easily undone.\n\nSafer alternatives:\n- Use _search with same query first to preview matches\n- Add conflicts=abort to stop on version conflicts\n- Use scroll_size to process in smaller batches"
+        },
+        {
+          "name": "os-curl-close-index",
+          "regex": "curl\\b.*-X\\s*POST\\b.*\\b(?:https?://)?[^\\s'\"]*(?:opensearch|:9200|es\\.amazonaws\\.com)[^\\s'\"]*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)/_close\\b",
+          "reason": "curl -X POST to _close closes an index, making it unavailable for reads/writes.",
+          "severity": "high",
+          "explanation": "Closing an index makes it completely unavailable for search and indexing. Applications will receive errors until the index is reopened. Using _all or * can close all indices at once.\n\nSafer alternatives:\n- Check index status with _cat/indices first\n- Use specific index names instead of wildcards\n- Verify no active applications depend on the index"
+        },
+        {
+          "name": "os-curl-delete-index",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*(?:opensearch|:9200|es\\.amazonaws\\.com)[^\\s'\"]*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)(?:\\b|[/?])",
+          "reason": "curl -X DELETE against an OpenSearch index (or _all/*) deletes data permanently.",
+          "severity": "critical",
+          "explanation": "Deleting an OpenSearch index permanently removes all documents, mappings, and settings. Using _all or * patterns can delete multiple indices at once. This action cannot be undone without restoring from a snapshot.\n\nSafer alternatives:\n- _cat/indices: List indices before deletion\n- Create a snapshot before deleting\n- Close the index first if just archiving"
+        },
+        {
+          "name": "os-http-delete-doc",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:opensearch|:9200|es\\.amazonaws\\.com)\\S*/[a-z0-9][a-z0-9._-]*/_doc/[^\\s/?]+",
+          "reason": "http DELETE against /_doc deletes a document from OpenSearch.",
+          "severity": "medium",
+          "explanation": "Deleting individual documents removes them from search results immediately. While less destructive than bulk operations, this can affect applications expecting the document to exist.\n\nSafer alternatives:\n- GET the document first to verify content\n- Use _update API to mark as deleted instead\n- Ensure document ID is correct before deletion"
+        },
+        {
+          "name": "os-http-delete-by-query",
+          "regex": "http\\s+POST\\s+(?:https?://)?\\S*(?:opensearch|:9200|es\\.amazonaws\\.com)\\S*/[a-z0-9][a-z0-9._-]*/_delete_by_query\\b",
+          "reason": "http POST to _delete_by_query deletes documents matching the query.",
+          "severity": "high",
+          "explanation": "The _delete_by_query endpoint can delete large numbers of documents at once. A poorly constructed query can remove more data than intended. This operation cannot be easily undone.\n\nSafer alternatives:\n- Use _search with same query first to preview matches\n- Add conflicts=abort to stop on version conflicts\n- Use scroll_size to process in smaller batches"
+        },
+        {
+          "name": "os-http-close-index",
+          "regex": "http\\s+POST\\s+(?:https?://)?\\S*(?:opensearch|:9200|es\\.amazonaws\\.com)\\S*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)/_close\\b",
+          "reason": "http POST to _close closes an index, making it unavailable for reads/writes.",
+          "severity": "high",
+          "explanation": "Closing an index makes it completely unavailable for search and indexing. Applications will receive errors until the index is reopened. Using _all or * can close all indices at once.\n\nSafer alternatives:\n- Check index status with _cat/indices first\n- Use specific index names instead of wildcards\n- Verify no active applications depend on the index"
+        },
+        {
+          "name": "os-http-delete-index",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:opensearch|:9200|es\\.amazonaws\\.com)\\S*/(?:_all|\\*|[a-z0-9][a-z0-9._-]*)(?:[\\s?]|$)",
+          "reason": "http DELETE against an OpenSearch index (or _all/*) deletes data permanently.",
+          "severity": "critical",
+          "explanation": "Deleting an OpenSearch index permanently removes all documents, mappings, and settings. Using _all or * patterns can delete multiple indices at once. This action cannot be undone without restoring from a snapshot.\n\nSafer alternatives:\n- _cat/indices: List indices before deletion\n- Create a snapshot before deleting\n- Close the index first if just archiving"
+        },
+        {
+          "name": "aws-opensearch-delete-domain",
+          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+opensearch\\s+delete-domain\\b",
+          "reason": "aws opensearch delete-domain permanently deletes an OpenSearch domain.",
+          "severity": "critical",
+          "explanation": "Deleting an OpenSearch domain removes the entire cluster including all indices, data, and configuration. This is irreversible and affects all applications using the domain. Automated snapshots may also be deleted.\n\nSafer alternatives:\n- aws opensearch describe-domain: Review domain configuration\n- Create a manual snapshot before deletion\n- Export data to S3 for long-term retention"
+        },
+        {
+          "name": "aws-opensearch-delete-inbound-connection",
+          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+opensearch\\s+delete-inbound-connection\\b",
+          "reason": "aws opensearch delete-inbound-connection removes an OpenSearch connection.",
+          "severity": "high",
+          "explanation": "Deleting an inbound connection removes cross-cluster connectivity. Applications performing cross-cluster searches or replication will fail. The connection must be re-established from the source domain.\n\nSafer alternatives:\n- List connections to understand dependencies\n- Verify no active cross-cluster operations\n- Update applications to use alternative data sources"
+        },
+        {
+          "name": "aws-opensearch-delete-outbound-connection",
+          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+opensearch\\s+delete-outbound-connection\\b",
+          "reason": "aws opensearch delete-outbound-connection removes an OpenSearch connection.",
+          "severity": "high",
+          "explanation": "Deleting an outbound connection removes cross-cluster connectivity from this domain. Any cross-cluster searches or replication to other domains will fail. Re-establishing requires a new connection request.\n\nSafer alternatives:\n- List connections to understand what will be affected\n- Coordinate with teams using connected domains\n- Test connection removal in a non-production environment"
+        },
+        {
+          "name": "aws-opensearch-delete-package",
+          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+opensearch\\s+delete-package\\b",
+          "reason": "aws opensearch delete-package removes an OpenSearch package.",
+          "severity": "medium",
+          "explanation": "Deleting a package removes custom plugins, dictionaries, or scripts. Domains using this package may experience errors or degraded functionality. The package must be re-uploaded if needed again.\n\nSafer alternatives:\n- List domains using this package first\n- Dissociate package from domains before deletion\n- Keep a copy of package contents for recovery"
+        }
+      ]
+    },
+    {
+      "id": "search.algolia",
+      "name": "Algolia",
+      "description": "Protects against destructive Algolia operations like deleting indices, clearing objects, removing rules/synonyms, and deleting API keys.",
+      "keywords": [
+        "algolia",
+        "algoliasearch"
+      ],
+      "safe_patterns": [
+        {
+          "name": "algolia-indices-browse",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+indices\\s+browse\\b"
+        },
+        {
+          "name": "algolia-indices-list",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+indices\\s+list\\b"
+        },
+        {
+          "name": "algolia-search",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+search\\b"
+        },
+        {
+          "name": "algolia-settings-get",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+settings\\s+get\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "algolia-indices-delete",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+indices\\s+delete\\b",
+          "reason": "algolia indices delete permanently removes an Algolia index.",
+          "severity": "critical",
+          "explanation": "Deleting an Algolia index permanently removes all searchable records, settings, rules, and synonyms. Search functionality for applications using this index will fail immediately. Re-indexing may require significant time and resources.\n\nSafer alternatives:\n- algolia indices list: Review indices before deletion\n- Export index data using algolia indices browse\n- Create a replica or copy before deleting"
+        },
+        {
+          "name": "algolia-indices-clear",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+indices\\s+clear\\b",
+          "reason": "algolia indices clear removes all objects from an Algolia index.",
+          "severity": "high",
+          "explanation": "Clearing an Algolia index removes all searchable records while preserving settings, rules, and synonyms. Search will return no results until data is re-indexed. This is irreversible without re-indexing from source data.\n\nSafer alternatives:\n- Export objects using algolia indices browse first\n- Use a staging index for testing\n- Delete specific objects instead of clearing all"
+        },
+        {
+          "name": "algolia-rules-delete",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+rules\\s+delete\\b",
+          "reason": "algolia rules delete removes index rules.",
+          "severity": "medium",
+          "explanation": "Deleting Algolia rules removes search customizations like query rewrites, promotions, and filters. Search behavior may change unexpectedly for users relying on these rules for relevant results.\n\nSafer alternatives:\n- algolia rules browse: Export rules before deletion\n- Disable rules temporarily instead of deleting\n- Test rule changes on a replica index first"
+        },
+        {
+          "name": "algolia-synonyms-delete",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+synonyms\\s+delete\\b",
+          "reason": "algolia synonyms delete removes synonym entries.",
+          "severity": "medium",
+          "explanation": "Deleting Algolia synonyms removes word associations that improve search matching. Users searching with alternative terms may no longer find expected results. Synonym configurations can take time to rebuild.\n\nSafer alternatives:\n- algolia synonyms browse: Export synonyms before deletion\n- Test synonym changes on a replica index\n- Document synonym configurations for recovery"
+        },
+        {
+          "name": "algolia-apikeys-delete",
+          "regex": "algolia(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+apikeys\\s+delete\\b",
+          "reason": "algolia apikeys delete removes API keys and can break integrations.",
+          "severity": "high",
+          "explanation": "Deleting an Algolia API key immediately revokes access for all applications using it. Search and indexing operations will fail with authentication errors. The key cannot be recovered after deletion.\n\nSafer alternatives:\n- algolia apikeys list: Review keys and their usage\n- Create new API keys before deleting old ones\n- Rotate keys by updating applications first"
+        },
+        {
+          "name": "algolia-sdk-delete-index",
+          "regex": "\\b(?:algolia|algoliasearch)\\b.*\\bdeleteIndex\\b",
+          "reason": "Algolia SDK deleteIndex removes an index.",
+          "severity": "critical",
+          "explanation": "The deleteIndex SDK method permanently removes an Algolia index and all its contents. This includes all records, settings, rules, and synonyms. Production search functionality will fail immediately.\n\nSafer alternatives:\n- Use browseObjects to export data first\n- Copy to a backup index before deleting\n- Add confirmation prompts in application code"
+        },
+        {
+          "name": "algolia-sdk-clear-objects",
+          "regex": "\\b(?:algolia|algoliasearch)\\b.*\\bclearObjects\\b",
+          "reason": "Algolia SDK clearObjects removes all records from an index.",
+          "severity": "high",
+          "explanation": "The clearObjects SDK method removes all searchable records from an index while keeping configuration intact. Search results will be empty until re-indexing completes. This cannot be undone.\n\nSafer alternatives:\n- Export objects using browseObjects first\n- Use deleteObjects for targeted removal\n- Test on a replica index before production"
+        }
+      ]
+    },
+    {
+      "id": "search.meilisearch",
+      "name": "Meilisearch",
+      "description": "Protects against destructive Meilisearch REST API operations like index deletion, document deletion, delete-batch, and API key removal.",
+      "keywords": [
+        "meili",
+        "meilisearch",
+        "7700",
+        "/indexes",
+        "/keys"
+      ],
+      "safe_patterns": [
+        {
+          "name": "meili-curl-get-stats",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/stats\\b"
+        },
+        {
+          "name": "meili-curl-get-health",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/health\\b"
+        },
+        {
+          "name": "meili-curl-get-version",
+          "regex": "curl\\b.*-X\\s*GET\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/version\\b"
+        },
+        {
+          "name": "meili-curl-search",
+          "regex": "curl\\b.*-X\\s*POST\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/indexes/[^\\s/]+/search\\b"
+        },
+        {
+          "name": "meili-http-get-stats",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/stats\\b"
+        },
+        {
+          "name": "meili-http-get-health",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/health\\b"
+        },
+        {
+          "name": "meili-http-get-version",
+          "regex": "http\\s+GET\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/version\\b"
+        },
+        {
+          "name": "meili-http-search",
+          "regex": "http\\s+POST\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/indexes/\\S+/search\\b"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "meili-curl-delete-document",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/indexes/[^\\s/?]+/documents/[^\\s/?]+",
+          "reason": "curl -X DELETE against /documents/{id} removes a document from Meilisearch.",
+          "severity": "medium",
+          "explanation": "Deleting a single document removes it from search results immediately. While less destructive than bulk operations, applications expecting this document will receive errors or empty results.\n\nSafer alternatives:\n- GET /indexes/{uid}/documents/{id}: Verify document first\n- Export document content before deletion\n- Use soft delete field in documents instead"
+        },
+        {
+          "name": "meili-curl-delete-documents",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/indexes/[^\\s/?]+/documents(?:[\\s?'\"]|$)",
+          "reason": "curl -X DELETE against /documents removes documents from Meilisearch.",
+          "severity": "high",
+          "explanation": "Deleting all documents removes every record from the index while preserving settings and configuration. Search will return no results until re-indexing. This cannot be undone.\n\nSafer alternatives:\n- GET /indexes/{uid}/documents: Export documents first\n- Create a snapshot or dump before deletion\n- Use delete-batch for targeted removal instead"
+        },
+        {
+          "name": "meili-curl-delete-batch",
+          "regex": "curl\\b.*-X\\s*POST\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/indexes/[^\\s/?]+/documents/delete-batch\\b",
+          "reason": "curl -X POST to /documents/delete-batch deletes documents in bulk.",
+          "severity": "high",
+          "explanation": "Batch delete removes multiple documents by their IDs in a single operation. This is irreversible and affects all documents matching the provided IDs. Verify the ID list carefully before executing.\n\nSafer alternatives:\n- GET documents by ID to verify content first\n- Export matching documents before deletion\n- Test with a small batch before processing all"
+        },
+        {
+          "name": "meili-curl-delete-key",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/keys/[^\\s/?]+",
+          "reason": "curl -X DELETE against /keys removes a Meilisearch API key.",
+          "severity": "high",
+          "explanation": "Deleting an API key immediately revokes access for all applications using it. Search and indexing operations will fail with authentication errors. The key cannot be recovered after deletion.\n\nSafer alternatives:\n- GET /keys: List and document keys before deletion\n- Create replacement key before deleting old one\n- Update applications with new key first"
+        },
+        {
+          "name": "meili-curl-delete-index",
+          "regex": "curl\\b.*-X\\s*DELETE\\b.*\\b(?:https?://)?[^\\s'\"]*(?:meili|:7700)[^\\s'\"]*/indexes/[^\\s/?]+(?:[\\s?'\"]|$)",
+          "reason": "curl -X DELETE against /indexes/{uid} deletes a Meilisearch index.",
+          "severity": "critical",
+          "explanation": "Deleting a Meilisearch index permanently removes all documents, settings, filterable attributes, and ranking rules. Search functionality for applications using this index will fail immediately.\n\nSafer alternatives:\n- GET /indexes/{uid}: Export index settings first\n- Create a dump with POST /dumps for backup\n- Re-index from source data after verification"
+        },
+        {
+          "name": "meili-http-delete-document",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/indexes/\\S+/documents/\\S+",
+          "reason": "http DELETE against /documents/{id} removes a document from Meilisearch.",
+          "severity": "medium",
+          "explanation": "Deleting a single document removes it from search results immediately. While less destructive than bulk operations, applications expecting this document will receive errors or empty results.\n\nSafer alternatives:\n- GET /indexes/{uid}/documents/{id}: Verify document first\n- Export document content before deletion\n- Use soft delete field in documents instead"
+        },
+        {
+          "name": "meili-http-delete-documents",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/indexes/\\S+/documents(?:[\\s?]|$)",
+          "reason": "http DELETE against /documents removes documents from Meilisearch.",
+          "severity": "high",
+          "explanation": "Deleting all documents removes every record from the index while preserving settings and configuration. Search will return no results until re-indexing. This cannot be undone.\n\nSafer alternatives:\n- GET /indexes/{uid}/documents: Export documents first\n- Create a snapshot or dump before deletion\n- Use delete-batch for targeted removal instead"
+        },
+        {
+          "name": "meili-http-delete-batch",
+          "regex": "http\\s+POST\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/indexes/\\S+/documents/delete-batch\\b",
+          "reason": "http POST to /documents/delete-batch deletes documents in bulk.",
+          "severity": "high",
+          "explanation": "Batch delete removes multiple documents by their IDs in a single operation. This is irreversible and affects all documents matching the provided IDs. Verify the ID list carefully before executing.\n\nSafer alternatives:\n- GET documents by ID to verify content first\n- Export matching documents before deletion\n- Test with a small batch before processing all"
+        },
+        {
+          "name": "meili-http-delete-key",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/keys/\\S+",
+          "reason": "http DELETE against /keys removes a Meilisearch API key.",
+          "severity": "high",
+          "explanation": "Deleting an API key immediately revokes access for all applications using it. Search and indexing operations will fail with authentication errors. The key cannot be recovered after deletion.\n\nSafer alternatives:\n- GET /keys: List and document keys before deletion\n- Create replacement key before deleting old one\n- Update applications with new key first"
+        },
+        {
+          "name": "meili-http-delete-index",
+          "regex": "http\\s+DELETE\\s+(?:https?://)?\\S*(?:meili|:7700)\\S*/indexes/\\S+(?:[\\s?]|$)",
+          "reason": "http DELETE against /indexes/{uid} deletes a Meilisearch index.",
+          "severity": "critical",
+          "explanation": "Deleting a Meilisearch index permanently removes all documents, settings, filterable attributes, and ranking rules. Search functionality for applications using this index will fail immediately.\n\nSafer alternatives:\n- GET /indexes/{uid}: Export index settings first\n- Create a dump with POST /dumps for backup\n- Re-index from source data after verification"
+        }
+      ]
+    }
+  ]
+}

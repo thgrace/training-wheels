@@ -1,0 +1,94 @@
+name: Destructive Command Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build tw
+        run: go build -o tw ./cmd/tw/
+
+      - name: Upload tw binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tw-binary
+          path: tw
+          retention-days: 1
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pack:
+          - ai
+          - api-gateway
+          - backup
+          - bypass
+          - cdn
+          - cicd
+          - cloud
+          - containers
+          - context
+          - core
+          - database
+          - dns
+          - email
+          - feature-flags
+          - hook-protocol
+          - infrastructure
+          - interpreters
+          - kubernetes
+          - load-balancer
+          - macos
+          - messaging
+          - monitoring
+          - packages
+          - payment
+          - platform
+          - remote
+          - search
+          - secrets
+          - storage
+          - strict-git
+          - system
+          - windows
+    name: test (${{ matrix.pack }})
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download tw binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: tw-binary
+
+      - name: Install tw
+        run: chmod +x tw && sudo mv tw /usr/local/bin/tw
+
+      - name: Configure tw for tests
+        run: echo "TW_PACKS_ENABLED=core,database,cloud,containers,kubernetes,infrastructure,system,remote,secrets,package_managers,platform,cicd,search,interpreters,dns,email,messaging,monitoring,storage,payment,cdn,apigateway,backup,featureflags,loadbalancer,ai,strict_git,windows" >> "$GITHUB_ENV"
+
+      - name: Run ${{ matrix.pack }} tests
+        run: .github/scripts/run-destructive-tests.sh .github/scripts/tests/test-${{ matrix.pack }}.sh
+
+      - name: Upload failure report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: failures-${{ matrix.pack }}
+          path: /tmp/tw-destructive-failures.txt

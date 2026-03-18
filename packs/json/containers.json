@@ -1,0 +1,412 @@
+{
+  "category": "containers",
+  "packs": [
+    {
+      "id": "containers.docker",
+      "name": "Docker",
+      "description": "Protects against destructive Docker operations like system prune, volume prune, and force removal",
+      "keywords": [
+        "docker",
+        "prune",
+        "rmi",
+        "volume"
+      ],
+      "safe_patterns": [
+        {
+          "name": "docker-ps",
+          "regex": "(?:^|[;|&]\\s*)docker\\s+ps"
+        },
+        {
+          "name": "docker-images",
+          "regex": "docker\\s+images"
+        },
+        {
+          "name": "docker-logs",
+          "regex": "docker\\s+logs"
+        },
+        {
+          "name": "docker-inspect",
+          "regex": "docker\\s+inspect"
+        },
+        {
+          "name": "docker-build",
+          "regex": "docker\\s+build"
+        },
+        {
+          "name": "docker-run",
+          "regex": "docker\\s+run"
+        },
+        {
+          "name": "docker-exec",
+          "regex": "docker\\s+exec"
+        },
+        {
+          "name": "docker-pull",
+          "regex": "docker\\s+pull"
+        },
+        {
+          "name": "docker-stats",
+          "regex": "docker\\s+stats"
+        },
+        {
+          "name": "docker-dry-run",
+          "regex": "docker\\s+.*--dry-run"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "system-prune",
+          "regex": "docker\\s+system\\s+prune",
+          "reason": "docker system prune removes ALL unused containers, networks, images. Use 'docker system df' to preview.",
+          "severity": "high",
+          "explanation": "docker system prune is Docker's most aggressive cleanup command. It removes:\n\n- All stopped containers\n- All networks not used by at least one container\n- All dangling images (untagged)\n- All dangling build cache\n\nWith -a flag, it also removes all unused images, not just dangling ones.\nWith --volumes flag, it removes all unused volumes (data loss!).\n\nPreview what would be removed:\n  docker system df          # Show disk usage\n  docker system df -v       # Verbose with details\n\nSafer alternative:\n  docker container prune    # Only stopped containers\n  docker image prune        # Only dangling images",
+          "suggestions": [
+            {
+              "command": "docker system df -v",
+              "description": "Preview what would be removed without deleting anything"
+            },
+            {
+              "command": "docker system prune --filter 'until=24h'",
+              "description": "Only removes items older than 24 hours"
+            },
+            {
+              "command": "docker container prune",
+              "description": "Remove only stopped containers (preserves images and volumes)"
+            },
+            {
+              "command": "docker image prune",
+              "description": "Remove only dangling images (preserves containers and volumes)"
+            }
+          ]
+        },
+        {
+          "name": "volume-prune",
+          "regex": "docker\\s+volume\\s+prune",
+          "reason": "docker volume prune removes ALL unused volumes and their data permanently.",
+          "severity": "high",
+          "explanation": "docker volume prune permanently deletes ALL volumes not currently attached to a running container. This is extremely dangerous because:\n\n- Database data stored in volumes is lost forever\n- Application state and uploads are destroyed\n- There is NO recovery mechanism\n\nEven stopped containers' volumes are considered 'unused' and will be deleted.\n\nPreview before pruning:\n  docker volume ls                    # List all volumes\n  docker volume ls -f dangling=true   # Show only unused\n\nSafer approach:\n  docker volume rm <specific-volume>  # Remove by name",
+          "suggestions": [
+            {
+              "command": "docker volume ls -q -f dangling=true",
+              "description": "List unused volumes first to review what would be deleted"
+            },
+            {
+              "command": "docker volume rm {volume-name}",
+              "description": "Remove specific volumes by name instead of all unused"
+            },
+            {
+              "command": "docker volume inspect {volume-name}",
+              "description": "Inspect volume contents and metadata before removal"
+            }
+          ]
+        },
+        {
+          "name": "network-prune",
+          "regex": "docker\\s+network\\s+prune",
+          "reason": "docker network prune removes ALL unused networks.",
+          "severity": "high",
+          "explanation": "docker network prune removes all user-defined networks not used by any container. While less destructive than volume prune, it can still cause issues:\n\n- Custom network configurations are lost\n- Containers may fail to communicate after restart\n- Service discovery between containers breaks\n\nPreview unused networks:\n  docker network ls\n  docker network ls -f dangling=true\n\nSafer alternative:\n  docker network rm <specific-network>",
+          "suggestions": [
+            {
+              "command": "docker network ls",
+              "description": "List all networks to review before pruning"
+            },
+            {
+              "command": "docker network rm {network-name}",
+              "description": "Remove specific networks by name instead of all unused"
+            }
+          ]
+        },
+        {
+          "name": "image-prune",
+          "regex": "docker\\s+image\\s+prune",
+          "reason": "docker image prune removes unused images. Use 'docker images' to review first.",
+          "severity": "medium",
+          "explanation": "docker image prune removes 'dangling' images (untagged layers). With -a flag, it removes ALL images not used by existing containers.\n\nConsequences:\n- Build cache layers are deleted (slower rebuilds)\n- With -a: base images must be re-pulled\n\nPreview what would be removed:\n  docker images -f dangling=true\n  docker images                       # With -a flag\n\nUsually safe, but may slow down builds.",
+          "suggestions": [
+            {
+              "command": "docker images -f dangling=true",
+              "description": "List dangling images first to see what would be removed"
+            },
+            {
+              "command": "docker rmi {image-id}",
+              "description": "Remove specific images by ID or tag"
+            }
+          ]
+        },
+        {
+          "name": "container-prune",
+          "regex": "docker\\s+container\\s+prune",
+          "reason": "docker container prune removes ALL stopped containers.",
+          "severity": "medium",
+          "explanation": "docker container prune removes all stopped containers. This is relatively safe but can cause issues:\n\n- Container logs are lost\n- Container filesystem layers are deleted\n- Cannot restart or inspect removed containers\n\nPreview stopped containers:\n  docker ps -a -f status=exited\n  docker ps -a -f status=created\n\nConsider keeping recent containers for debugging.",
+          "suggestions": [
+            {
+              "command": "docker ps -a -f status=exited",
+              "description": "List stopped containers first to review before removal"
+            },
+            {
+              "command": "docker rm {container-id}",
+              "description": "Remove specific containers instead of all stopped"
+            }
+          ]
+        },
+        {
+          "name": "rm-force",
+          "regex": "docker\\s+rm\\s+.*(?:-[a-zA-Z0-9]*f|--force)",
+          "reason": "docker rm -f forcibly removes containers, potentially losing data.",
+          "severity": "high",
+          "explanation": "docker rm -f forcibly stops and removes containers. This is dangerous because:\n\n- Running processes are killed immediately (SIGKILL)\n- No graceful shutdown - data may be corrupted\n- In-flight requests are dropped\n- Uncommitted data in the container is lost\n\nSafer approach:\n  docker stop <container>  # Graceful shutdown (SIGTERM)\n  docker rm <container>    # Then remove\n\nCheck container status first:\n  docker ps -a | grep <container>",
+          "suggestions": [
+            {
+              "command": "docker stop {container} && docker rm {container}",
+              "description": "Graceful shutdown with SIGTERM before removal"
+            },
+            {
+              "command": "docker container prune",
+              "description": "Remove stopped containers with confirmation prompt"
+            },
+            {
+              "command": "docker ps -a | grep {container}",
+              "description": "Check container status before removal"
+            }
+          ]
+        },
+        {
+          "name": "rmi-force",
+          "regex": "docker\\s+rmi\\s+.*(?:-[a-zA-Z0-9]*f|--force)",
+          "reason": "docker rmi -f forcibly removes images even if in use.",
+          "severity": "high",
+          "explanation": "docker rmi -f forcibly removes images, even if containers are using them. This can cause:\n\n- Running containers to fail on restart\n- Broken references to deleted layers\n- Loss of build cache\n\nCheck what's using the image:\n  docker ps -a --filter ancestor=<image>\n\nSafer approach:\n  docker rmi <image>  # Fails safely if in use",
+          "suggestions": [
+            {
+              "command": "docker rmi {image}",
+              "description": "Remove without force - fails safely if image is in use"
+            },
+            {
+              "command": "docker image prune",
+              "description": "Remove only dangling (untagged) images"
+            },
+            {
+              "command": "docker ps -a --filter ancestor={image}",
+              "description": "Check what containers are using the image first"
+            }
+          ]
+        },
+        {
+          "name": "volume-rm",
+          "regex": "docker\\s+volume\\s+rm",
+          "reason": "docker volume rm permanently deletes volumes and their data.",
+          "severity": "high",
+          "explanation": "docker volume rm permanently deletes named volumes and all data stored in them. This is irreversible:\n\n- Database files are gone\n- User uploads are lost\n- Configuration data is destroyed\n- No trash or undo mechanism exists\n\nCheck volume contents first:\n  docker run --rm -v <volume>:/data alpine ls -la /data\n\nConsider backing up:\n  docker run --rm -v <volume>:/data -v $(pwd):/backup alpine \\\n    tar czf /backup/volume-backup.tar.gz /data",
+          "suggestions": [
+            {
+              "command": "docker volume inspect {volume}",
+              "description": "Inspect volume metadata and mount point before removal"
+            },
+            {
+              "command": "docker run --rm -v {volume}:/data alpine ls -la /data",
+              "description": "List volume contents before deletion"
+            },
+            {
+              "command": "docker run --rm -v {volume}:/data -v $(pwd):/backup alpine tar czf /backup/backup.tar.gz /data",
+              "description": "Backup volume data before removal"
+            }
+          ]
+        },
+        {
+          "name": "stop-all",
+          "regex": "docker\\s+(?:stop|kill)\\s+\\$\\(docker\\s+ps",
+          "reason": "Stopping/killing all containers can disrupt services. Be specific about which containers.",
+          "severity": "high",
+          "explanation": "This pattern stops or kills ALL running containers on the system. This is dangerous in shared environments:\n\n- Production services go down\n- Database connections are severed\n- In-flight requests fail\n- Other users' containers are affected\n\nBe specific instead:\n  docker stop <container-name>     # Stop by name\n  docker stop $(docker ps -q -f name=myapp)  # Filter by name\n\nPreview what would be stopped:\n  docker ps --format '{{.Names}}: {{.Status}}'",
+          "suggestions": [
+            {
+              "command": "docker stop {container-name}",
+              "description": "Stop specific containers by name"
+            },
+            {
+              "command": "docker stop $(docker ps -q -f name={pattern})",
+              "description": "Stop containers matching a name filter"
+            },
+            {
+              "command": "docker ps --format '{{.Names}}: {{.Status}}'",
+              "description": "List running containers before stopping"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "containers.compose",
+      "name": "Docker Compose",
+      "description": "Protects against destructive Docker Compose operations like 'down -v' which removes volumes",
+      "keywords": [
+        "docker-compose",
+        "docker compose",
+        "compose"
+      ],
+      "safe_patterns": [
+        {
+          "name": "compose-config",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+config"
+        },
+        {
+          "name": "compose-ps",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+ps"
+        },
+        {
+          "name": "compose-logs",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+logs"
+        },
+        {
+          "name": "compose-up",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+up"
+        },
+        {
+          "name": "compose-build",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+build"
+        },
+        {
+          "name": "compose-pull",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+pull"
+        },
+        {
+          "name": "compose-down-no-volumes",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+down(?!\\s+.*(?:-v|--volumes|--rmi))"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "down-volumes",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+down\\s+.*(?:-v\\b|--volumes)",
+          "reason": "docker-compose down -v removes volumes and their data permanently.",
+          "severity": "critical",
+          "explanation": "The -v/--volumes flag causes docker-compose down to remove named volumes declared in the volumes section of the Compose file, as well as anonymous volumes attached to containers. This permanently destroys:\n\n- Database data (PostgreSQL, MySQL, MongoDB volumes)\n- User uploads and application state\n- Any persistent configuration stored in volumes\n\nSafer alternatives:\n- docker-compose down: Stops and removes containers without touching volumes\n- docker-compose stop: Stops containers, preserving everything\n- docker volume ls: List volumes before removal"
+        },
+        {
+          "name": "down-rmi-all",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+down\\s+.*--rmi\\s+all",
+          "reason": "docker-compose down --rmi all removes all images used by services.",
+          "severity": "high",
+          "explanation": "The --rmi all flag removes all images used by services in the Compose file. This forces re-downloading or rebuilding images on next 'up':\n\n- Base images must be pulled again (bandwidth, time)\n- Custom built images need rebuilding\n- Layers not in registry are lost\n\nSafer alternatives:\n- docker-compose down: Preserves images for faster restarts\n- docker-compose down --rmi local: Only removes images without custom tag\n- docker image ls: Review images before removal"
+        },
+        {
+          "name": "rm-volumes",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+rm\\s+.*(?:-v\\b|--volumes)",
+          "reason": "docker-compose rm -v removes volumes attached to containers.",
+          "severity": "high",
+          "explanation": "The -v flag with docker-compose rm removes anonymous volumes attached to the containers being removed. This can cause data loss if volumes contain:\n\n- Application state or session data\n- Cached data that takes time to rebuild\n- Temporary but important processing results\n\nSafer alternatives:\n- docker-compose rm: Removes containers without volumes\n- docker-compose stop: Stops without removing anything\n- docker volume ls: Check what volumes exist"
+        },
+        {
+          "name": "rm-force",
+          "regex": "(?:docker-compose|docker\\s+compose)\\s+rm\\s+.*(?:-f\\b|--force)",
+          "reason": "docker-compose rm -f forcibly removes containers without confirmation.",
+          "severity": "medium",
+          "explanation": "The -f/--force flag removes containers without asking for confirmation. While this doesn't directly cause data loss, it can be risky:\n\n- Running containers are stopped abruptly (SIGKILL)\n- No graceful shutdown for applications\n- In-flight requests or transactions may be lost\n\nSafer alternatives:\n- docker-compose stop: Graceful shutdown first\n- docker-compose rm: Asks for confirmation\n- docker-compose ps: Check container status first"
+        }
+      ]
+    },
+    {
+      "id": "containers.podman",
+      "name": "Podman",
+      "description": "Protects against destructive Podman operations like system prune, volume prune, and force removal",
+      "keywords": [
+        "podman",
+        "prune"
+      ],
+      "safe_patterns": [
+        {
+          "name": "podman-ps",
+          "regex": "podman\\s+ps"
+        },
+        {
+          "name": "podman-images",
+          "regex": "podman\\s+images"
+        },
+        {
+          "name": "podman-logs",
+          "regex": "podman\\s+logs"
+        },
+        {
+          "name": "podman-inspect",
+          "regex": "podman\\s+inspect"
+        },
+        {
+          "name": "podman-build",
+          "regex": "podman\\s+build"
+        },
+        {
+          "name": "podman-pull",
+          "regex": "podman\\s+pull"
+        },
+        {
+          "name": "podman-run",
+          "regex": "podman\\s+run"
+        },
+        {
+          "name": "podman-exec",
+          "regex": "podman\\s+exec"
+        }
+      ],
+      "destructive_patterns": [
+        {
+          "name": "system-prune",
+          "regex": "podman\\s+system\\s+prune",
+          "reason": "podman system prune removes ALL unused containers, pods, images. Use 'podman system df' to preview.",
+          "severity": "high",
+          "explanation": "podman system prune is an aggressive cleanup command that removes:\n\n- All stopped containers\n- All pods without running containers\n- All dangling images (untagged)\n- All dangling build cache\n\nWith -a flag, removes ALL unused images. With --volumes, removes unused volumes.\n\nSafer alternatives:\n- podman system df: Preview disk usage first\n- podman container prune: Only remove stopped containers\n- podman image prune: Only remove dangling images"
+        },
+        {
+          "name": "volume-prune",
+          "regex": "podman\\s+volume\\s+prune",
+          "reason": "podman volume prune removes ALL unused volumes and their data permanently.",
+          "severity": "critical",
+          "explanation": "podman volume prune permanently deletes ALL volumes not currently in use by any container. This is extremely dangerous:\n\n- Database data in volumes is lost forever\n- Application state and uploads are destroyed\n- Volumes from stopped containers are considered 'unused'\n- No recovery mechanism exists\n\nSafer alternatives:\n- podman volume ls: List all volumes first\n- podman volume inspect: Check volume contents\n- podman volume rm <name>: Remove specific volumes"
+        },
+        {
+          "name": "pod-prune",
+          "regex": "podman\\s+pod\\s+prune",
+          "reason": "podman pod prune removes ALL stopped pods.",
+          "severity": "medium",
+          "explanation": "podman pod prune removes all pods that are not currently running. Pods group containers together and pruning them:\n\n- Removes all containers within the stopped pods\n- Pod configuration and networking setup is lost\n- Cannot restart or inspect removed pods\n\nSafer alternatives:\n- podman pod ps -a: List all pods first\n- podman pod rm <pod>: Remove specific pods\n- podman pod start <pod>: Restart instead of removing"
+        },
+        {
+          "name": "image-prune",
+          "regex": "podman\\s+image\\s+prune",
+          "reason": "podman image prune removes unused images. Use 'podman images' to review first.",
+          "severity": "medium",
+          "explanation": "podman image prune removes dangling images (untagged layers). With -a flag, removes ALL images not used by existing containers.\n\nConsequences:\n- Build cache layers are deleted (slower rebuilds)\n- With -a: Base images must be re-pulled\n\nSafer alternatives:\n- podman images -f dangling=true: Preview what would be removed\n- podman images: Review all images\n- podman rmi <image>: Remove specific images"
+        },
+        {
+          "name": "container-prune",
+          "regex": "podman\\s+container\\s+prune",
+          "reason": "podman container prune removes ALL stopped containers.",
+          "severity": "medium",
+          "explanation": "podman container prune removes all stopped containers. Relatively safe but:\n\n- Container logs are lost\n- Container filesystem layers are deleted\n- Cannot restart or inspect removed containers\n\nSafer alternatives:\n- podman ps -a: List all containers first\n- podman rm <container>: Remove specific containers\n- podman start <container>: Restart instead of removing"
+        },
+        {
+          "name": "rm-force",
+          "regex": "podman\\s+rm\\s+.*-f|podman\\s+rm\\s+.*--force",
+          "reason": "podman rm -f forcibly removes containers, potentially losing data.",
+          "severity": "high",
+          "explanation": "podman rm -f forcibly stops and removes containers. This is dangerous because:\n\n- Running processes are killed immediately (SIGKILL)\n- No graceful shutdown - data may be corrupted\n- In-flight requests are dropped\n- Uncommitted data in the container is lost\n\nSafer alternatives:\n- podman stop <container>: Graceful shutdown first\n- podman rm <container>: Then remove\n- podman ps: Check container status first"
+        },
+        {
+          "name": "rmi-force",
+          "regex": "podman\\s+rmi\\s+.*-f|podman\\s+rmi\\s+.*--force",
+          "reason": "podman rmi -f forcibly removes images even if in use.",
+          "severity": "high",
+          "explanation": "podman rmi -f forcibly removes images, even if containers reference them. This can cause:\n\n- Containers to fail on restart (missing image)\n- Broken references to deleted layers\n- Loss of build cache\n\nSafer alternatives:\n- podman ps -a --filter ancestor=<image>: Check what uses the image\n- podman rmi <image>: Fails safely if in use\n- podman images: Review images before removal"
+        },
+        {
+          "name": "volume-rm",
+          "regex": "podman\\s+volume\\s+rm",
+          "reason": "podman volume rm permanently deletes volumes and their data.",
+          "severity": "high",
+          "explanation": "podman volume rm permanently deletes named volumes and all data stored in them. This is irreversible:\n\n- Database files are gone forever\n- User uploads are lost\n- Configuration data is destroyed\n- No trash or undo mechanism\n\nSafer alternatives:\n- podman volume inspect <volume>: Check volume details\n- podman run --rm -v vol:/data alpine ls -la /data: View contents\n- Back up before removal"
+        }
+      ]
+    }
+  ]
+}
