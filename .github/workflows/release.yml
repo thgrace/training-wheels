@@ -48,6 +48,7 @@ jobs:
       config-file: .slsa-goreleaser.yml
       evaluated-envs: "VERSION:${{needs.args.outputs.version}}"
       upload-assets: true
+      private-repository: ${{ github.event.repository.private }}
 
   checksums:
     needs: build
