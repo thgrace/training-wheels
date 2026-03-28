@@ -12,52 +12,115 @@
         "cordon",
         "taint"
       ],
-      "safe_patterns": [
+      "structural_patterns": [
         {
-          "name": "kubectl-get",
-          "regex": "kubectl\\s+get"
+          "name": "delete-all-massive",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "arg_exact": [
+              "all"
+            ],
+            "flag": [
+              "--all"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
+          "reason": "kubectl delete all --all removes EVERY supported resource in the current namespace. Extremely destructive!",
+          "severity": "critical",
+          "explanation": "This command deletes all supported Kubernetes resources (Deployments, Services, Pods, ConfigMaps, etc.) in the target namespace simultaneously. This will stop your entire application immediately and is almost never intended for live environments.\n\nVerify and preview first:\n  kubectl get all -n <namespace>\n  kubectl delete all --all --dry-run=client\n\nTarget specific resources instead:\n  kubectl delete deployment <name>",
+          "suggestions": [
+            {
+              "command": "kubectl delete all --all --dry-run=client",
+              "description": "Preview massive deletion without making changes"
+            },
+            {
+              "command": "kubectl get all",
+              "description": "List all resources to review before deleting"
+            }
+          ]
         },
         {
-          "name": "kubectl-describe",
-          "regex": "kubectl\\s+describe"
+          "name": "context-switch",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "config"
+            ],
+            "arg_exact": [
+              "use-context",
+              "delete-context",
+              "unset"
+            ]
+          },
+          "reason": "Modifying Kubernetes contexts affects which cluster you are targeting. Ensure you are not affecting production accidentally.",
+          "severity": "medium",
+          "explanation": "Changing or deleting a context in your kubeconfig affects which cluster your future commands will target. Accidentally switching to a production cluster or deleting a necessary context can lead to downtime or unintended destructive operations.\n\nReview current context:\n  kubectl config current-context\n\nList all available contexts:\n  kubectl config get-contexts",
+          "suggestions": [
+            {
+              "command": "kubectl config current-context",
+              "description": "Verify your current active context"
+            },
+            {
+              "command": "kubectl config get-contexts",
+              "description": "List all available contexts to find the right one"
+            }
+          ]
         },
         {
-          "name": "kubectl-logs",
-          "regex": "kubectl\\s+logs"
+          "name": "kubectx-switch",
+          "when": {
+            "command": [
+              "kubectx"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "-c",
+              "--current",
+              "-h",
+              "--help"
+            ]
+          },
+          "reason": "Switching Kubernetes contexts via kubectx affects where future commands are executed.",
+          "severity": "medium",
+          "explanation": "kubectx is a tool for fast context switching. Changing the current context can lead to accidental operations in the wrong cluster.\n\nCheck current context:\n  kubectx -c",
+          "suggestions": [
+            {
+              "command": "kubectx -c",
+              "description": "Show the current active context"
+            }
+          ]
         },
-        {
-          "name": "kubectl-dry-run",
-          "regex": "kubectl\\s+.*--dry-run(?:=(?:client|server|none))?"
-        },
-        {
-          "name": "kubectl-diff",
-          "regex": "kubectl\\s+diff"
-        },
-        {
-          "name": "kubectl-explain",
-          "regex": "kubectl\\s+explain"
-        },
-        {
-          "name": "kubectl-top",
-          "regex": "kubectl\\s+top"
-        },
-        {
-          "name": "kubectl-config",
-          "regex": "kubectl\\s+config"
-        },
-        {
-          "name": "kubectl-api",
-          "regex": "kubectl\\s+api-(?:resources|versions)"
-        },
-        {
-          "name": "kubectl-version",
-          "regex": "kubectl\\s+version"
-        }
-      ],
-      "destructive_patterns": [
         {
           "name": "delete-namespace",
-          "regex": "kubectl\\s+delete\\s+(?:namespace|ns)\\b",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "arg_contains": [
+              "namespace",
+              "ns"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl delete namespace removes the entire namespace and ALL resources within it.",
           "severity": "critical",
           "explanation": "Deleting a namespace destroys EVERYTHING inside it:\n\n- All deployments, pods, services\n- All configmaps and secrets\n- All persistent volume claims (data may be lost)\n- All ingresses and network policies\n- All RBAC resources scoped to the namespace\n\nThis is irreversible. Even if you recreate the namespace, all resources are gone.\n\nPreview what would be deleted:\n  kubectl get all -n <namespace>\n  kubectl get pvc -n <namespace>\n\nSafer approach:\n  kubectl delete deployment <name> -n <namespace>  # Delete specific resources",
@@ -78,7 +141,22 @@
         },
         {
           "name": "delete-all",
-          "regex": "kubectl\\s+delete\\s+.*--all\\b",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "flag": [
+              "--all"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl delete --all removes ALL resources of that type. Use --dry-run=client first.",
           "severity": "high",
           "explanation": "The --all flag deletes EVERY resource of the specified type in the namespace.\n\nFor example:\n- kubectl delete pods --all: Kills all pods (services go down)\n- kubectl delete svc --all: Removes all services (networking breaks)\n- kubectl delete pvc --all: May delete all persistent data\n\nAlways preview first:\n  kubectl delete <resource> --all --dry-run=client\n\nSafer alternative:\n  kubectl delete <resource> -l app=myapp  # Use label selectors",
@@ -103,42 +181,116 @@
         },
         {
           "name": "delete-all-namespaces",
-          "regex": "kubectl\\s+delete\\s+.*(?:-A\\b|--all-namespaces)",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "flag": [
+              "-A",
+              "--all-namespaces"
+            ]
+          },
           "reason": "kubectl delete with -A/--all-namespaces affects ALL namespaces. Very dangerous!",
           "severity": "critical",
           "explanation": "The -A/--all-namespaces flag expands deletion to EVERY namespace in the cluster. This can take down your entire cluster:\n\n- Production, staging, and dev environments affected\n- System namespaces (kube-system) may be impacted\n- Cross-namespace resources and dependencies break\n\nThis is almost never what you want. Always specify a namespace:\n  kubectl delete <resource> -n <namespace>\n\nPreview cluster-wide resources:\n  kubectl get <resource> -A"
         },
         {
           "name": "drain-node",
-          "regex": "kubectl\\s+drain\\b",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "drain"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl drain evicts all pods from a node. Ensure proper pod disruption budgets.",
           "severity": "high",
           "explanation": "kubectl drain evicts ALL pods from a node, typically for maintenance. This can cause service disruption:\n\n- All pods are evicted (respecting PodDisruptionBudgets)\n- DaemonSet pods remain unless --ignore-daemonsets is used\n- Pods with local storage fail unless --delete-emptydir-data is used\n- Without replicas elsewhere, services go down\n\nBefore draining:\n  kubectl get pods -o wide | grep <node>  # Check what's running\n  kubectl get pdb -A                       # Check disruption budgets\n\nSafer approach:\n  kubectl cordon <node>  # Prevent new pods first, then drain gradually"
         },
         {
           "name": "cordon-node",
-          "regex": "kubectl\\s+cordon\\b",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "cordon"
+            ]
+          },
           "reason": "kubectl cordon marks a node unschedulable. Existing pods continue running.",
           "severity": "medium",
           "explanation": "kubectl cordon marks a node as unschedulable. Existing pods continue running, but no new pods will be scheduled to this node.\n\nUse cases:\n- Preparing for maintenance\n- Investigating node issues\n- Gradual migration\n\nTo reverse:\n  kubectl uncordon <node>\n\nCheck node status:\n  kubectl get nodes\n  kubectl describe node <node> | grep Taints"
         },
         {
           "name": "taint-noexecute",
-          "regex": "kubectl\\s+taint\\s+.*:NoExecute",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "taint"
+            ],
+            "arg_contains": [
+              ":NoExecute"
+            ]
+          },
           "reason": "kubectl taint with NoExecute evicts existing pods that don't tolerate the taint.",
           "severity": "high",
           "explanation": "A NoExecute taint immediately evicts pods that don't have a matching toleration. This is more aggressive than NoSchedule:\n\n- Existing pods are evicted (not just new scheduling blocked)\n- Can cause immediate service disruption\n- Pods may not have time for graceful shutdown\n\nCheck current taints:\n  kubectl describe node <node> | grep Taints\n\nConsider NoSchedule first:\n  kubectl taint nodes <node> key=value:NoSchedule\n\nRemove taint:\n  kubectl taint nodes <node> key=value:NoExecute-"
         },
         {
           "name": "delete-workload",
-          "regex": "kubectl\\s+delete\\s+(?:deployment|statefulset|daemonset|replicaset)\\b(?!.*--dry-run)",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "arg_contains": [
+              "deployment",
+              "statefulset",
+              "daemonset",
+              "replicaset"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl delete deployment/statefulset/daemonset removes the workload. Use --dry-run first.",
           "severity": "high",
           "explanation": "Deleting a workload terminates all its pods:\n\n- Deployment: All replicas terminated, service goes down\n- StatefulSet: Ordered shutdown, PVCs may be orphaned\n- DaemonSet: Removed from all nodes\n- ReplicaSet: Pods terminated (usually managed by Deployment)\n\nPreview first:\n  kubectl delete <type> <name> --dry-run=client\n  kubectl get pods -l app=<name>  # Check affected pods\n\nConsider scaling down first:\n  kubectl scale deployment <name> --replicas=0"
         },
         {
           "name": "delete-pvc",
-          "regex": "kubectl\\s+delete\\s+(?:pvc|persistentvolumeclaim)\\b(?!.*--dry-run)",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "arg_contains": [
+              "pvc",
+              "persistentvolumeclaim"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl delete pvc may permanently delete data if ReclaimPolicy is Delete.",
           "severity": "critical",
           "explanation": "Deleting a PVC can cause permanent data loss depending on the PV's reclaimPolicy:\n\n- Delete: Underlying storage is deleted (DATA LOST)\n- Retain: PV is kept but becomes 'Released' (manual recovery needed)\n- Recycle: Deprecated, data scrubbed\n\nCheck the reclaim policy:\n  kubectl get pv <pv-name> -o jsonpath='{.spec.persistentVolumeReclaimPolicy}'\n\nBackup first:\n  kubectl exec <pod> -- tar czf - /data > backup.tar.gz\n\nPreview:\n  kubectl delete pvc <name> --dry-run=client",
@@ -163,21 +315,58 @@
         },
         {
           "name": "delete-pv",
-          "regex": "kubectl\\s+delete\\s+(?:pv|persistentvolume)\\b(?!.*--dry-run)",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "arg_contains": [
+              "pv",
+              "persistentvolume"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl delete pv may permanently delete the underlying storage.",
           "severity": "critical",
           "explanation": "Deleting a PersistentVolume can permanently destroy the underlying storage:\n\n- Cloud disks (EBS, GCE PD, Azure Disk) may be deleted\n- NFS mounts become orphaned\n- Local storage data is lost\n\nEven with Retain policy, deleting the PV may trigger storage cleanup.\n\nCheck what's using the PV:\n  kubectl get pvc -A | grep <pv-name>\n\nCheck storage class policy:\n  kubectl get storageclass <class> -o yaml\n\nPreview:\n  kubectl delete pv <name> --dry-run=client"
         },
         {
           "name": "scale-to-zero",
-          "regex": "kubectl\\s+scale\\s+.*--replicas=0",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "scale"
+            ],
+            "flag": [
+              "--replicas=0"
+            ]
+          },
           "reason": "kubectl scale --replicas=0 stops all pods for the workload.",
           "severity": "high",
           "explanation": "Scaling to zero replicas terminates ALL pods for the workload:\n\n- Service becomes unavailable\n- Endpoints are removed from Service\n- In-flight requests are dropped\n- StatefulSets: Ordered shutdown from highest ordinal\n\nThis is often intentional but can cause outages if done accidentally.\n\nCheck current replicas:\n  kubectl get deployment <name> -o jsonpath='{.spec.replicas}'\n\nTo restore:\n  kubectl scale deployment <name> --replicas=<N>"
         },
         {
           "name": "delete-force",
-          "regex": "kubectl\\s+delete\\s+.*--force.*--grace-period=0|kubectl\\s+delete\\s+.*--grace-period=0.*--force",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "flag": [
+              "--force",
+              "--grace-period=0"
+            ]
+          },
           "reason": "kubectl delete --force --grace-period=0 immediately removes resources without graceful shutdown.",
           "severity": "critical",
           "explanation": "Force deletion with zero grace period is dangerous:\n\n- Pods are killed immediately (no SIGTERM, just gone)\n- In-flight requests fail\n- Data corruption risk if writes in progress\n- Finalizers may be skipped (resource leak)\n\nKubernetes warns against this. Use only for stuck pods that won't terminate.\n\nTry graceful deletion first:\n  kubectl delete pod <name>                    # Default 30s grace\n  kubectl delete pod <name> --grace-period=60  # Extended grace\n\nCheck why pod is stuck:\n  kubectl describe pod <name> | grep -A5 Status",
@@ -198,7 +387,17 @@
         },
         {
           "name": "apply-force",
-          "regex": "kubectl\\s+apply\\s+.*--force(?:\\s|$)",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "apply"
+            ],
+            "flag": [
+              "--force"
+            ]
+          },
           "reason": "kubectl apply --force deletes and recreates resources, causing downtime.",
           "severity": "high",
           "explanation": "kubectl apply --force deletes the resource and recreates it from the manifest. This causes:\n\n- Downtime as pods are terminated before new ones start\n- Loss of any runtime modifications\n- Potential data loss for stateful workloads\n- Disruption to in-flight requests\n\nUse this only when you cannot update resources normally due to immutable field changes.\n\nPreview changes first:\n  kubectl diff -f <file>\n\nTry server-side apply for safer updates:\n  kubectl apply --server-side -f <file>",
@@ -219,7 +418,23 @@
         },
         {
           "name": "delete-from-directory",
-          "regex": "kubectl\\s+delete\\s+-f\\s+\\.\\s*$|kubectl\\s+delete\\s+-f\\s+\\./|kubectl\\s+delete\\s+-f\\s+\\S+/\\s*$|kubectl\\s+delete\\s+--recursive\\s+-f|kubectl\\s+delete\\s+-f.*--recursive",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "flag": [
+              "-f",
+              "--recursive"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl delete -f with directories or --recursive deletes many resources at once.",
           "severity": "high",
           "explanation": "Deleting from a directory or recursively removes ALL resources defined in those files:\n\n- Multiple deployments, services, configmaps deleted at once\n- Hard to recover if wrong directory\n- No confirmation or preview by default\n\nAlways preview first:\n  kubectl diff -f <directory>\n  ls -la <directory>/*.yaml\n\nDelete specific files instead:\n  kubectl delete -f <specific-file.yaml>",
@@ -250,81 +465,76 @@
         "delete",
         "rollback"
       ],
-      "safe_patterns": [
-        {
-          "name": "helm-list",
-          "regex": "helm\\s+list"
-        },
-        {
-          "name": "helm-status",
-          "regex": "helm\\s+status"
-        },
-        {
-          "name": "helm-history",
-          "regex": "helm\\s+history"
-        },
-        {
-          "name": "helm-show",
-          "regex": "helm\\s+show"
-        },
-        {
-          "name": "helm-inspect",
-          "regex": "helm\\s+inspect"
-        },
-        {
-          "name": "helm-get",
-          "regex": "helm\\s+get"
-        },
-        {
-          "name": "helm-search",
-          "regex": "helm\\s+search"
-        },
-        {
-          "name": "helm-repo",
-          "regex": "helm\\s+repo"
-        },
-        {
-          "name": "helm-dry-run",
-          "regex": "helm\\s+.*--dry-run"
-        },
-        {
-          "name": "helm-template",
-          "regex": "helm\\s+template"
-        },
-        {
-          "name": "helm-lint",
-          "regex": "helm\\s+lint"
-        },
-        {
-          "name": "helm-diff",
-          "regex": "helm\\s+diff"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "uninstall",
-          "regex": "helm\\s+(?:uninstall|delete)\\b(?!.*--dry-run)",
+          "when": {
+            "command": [
+              "helm"
+            ],
+            "subcommand": [
+              "uninstall",
+              "delete"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "helm uninstall removes the release and all its resources. Use --dry-run first.",
           "severity": "critical",
           "explanation": "helm uninstall deletes the release and ALL Kubernetes resources created by it:\n\n- Deployments, services, and pods are terminated\n- ConfigMaps and secrets are deleted\n- Persistent volume claims may be deleted (depends on chart)\n- Release history is purged (no rollback possible)\n\nSafer alternatives:\n- helm uninstall <release> --dry-run: Preview what will be deleted\n- helm status <release>: Review current release state\n- helm get all <release>: See all resources managed by release\n- helm get manifest <release>: Get the actual Kubernetes manifests"
         },
         {
           "name": "rollback",
-          "regex": "helm\\s+rollback\\b(?!.*--dry-run)",
+          "when": {
+            "command": [
+              "helm"
+            ],
+            "subcommand": [
+              "rollback"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "helm rollback reverts to a previous release. Use --dry-run to preview changes.",
           "severity": "high",
           "explanation": "helm rollback reverts the release to a previous revision. This can cause unexpected behavior if the previous version differs significantly:\n\n- Pod configurations are reverted (may break dependencies)\n- ConfigMaps and secrets are rolled back\n- Database migrations are NOT automatically undone\n- Downtime may occur during the transition\n\nSafer alternatives:\n- helm rollback <release> <revision> --dry-run: Preview changes\n- helm history <release>: Review available revisions\n- helm diff rollback <release> <revision>: Compare changes (requires diff plugin)"
         },
         {
           "name": "upgrade-force",
-          "regex": "helm\\s+upgrade\\s+.*--force",
+          "when": {
+            "command": [
+              "helm"
+            ],
+            "subcommand": [
+              "upgrade"
+            ],
+            "flag": [
+              "--force"
+            ]
+          },
           "reason": "helm upgrade --force deletes and recreates resources, causing downtime.",
           "severity": "high",
           "explanation": "The --force flag causes Helm to delete and recreate resources instead of updating them in place. This can cause service disruption:\n\n- Pods are terminated and recreated (downtime between)\n- Persistent volume claims may be deleted and recreated\n- In-flight requests are dropped during recreation\n- Service IP addresses may change\n\nSafer alternatives:\n- Remove --force to use rolling updates\n- helm upgrade --dry-run --debug: Preview changes\n- helm diff upgrade: Compare before upgrading (requires diff plugin)"
         },
         {
           "name": "upgrade-reset-values",
-          "regex": "helm\\s+upgrade\\s+.*--reset-values",
+          "when": {
+            "command": [
+              "helm"
+            ],
+            "subcommand": [
+              "upgrade"
+            ],
+            "flag": [
+              "--reset-values"
+            ]
+          },
           "reason": "helm upgrade --reset-values discards all previously set values.",
           "severity": "high",
           "explanation": "The --reset-values flag discards all values from previous releases, using only chart defaults and explicitly provided values. This can unexpectedly change:\n\n- Resource limits and replica counts\n- Database connection strings and credentials\n- Feature flags and environment variables\n- Any customization from previous 'helm upgrade' commands\n\nSafer alternatives:\n- helm get values <release>: Review current values first\n- helm upgrade --reuse-values: Keep existing values (default)\n- helm upgrade -f values.yaml: Explicitly set all needed values"
@@ -339,42 +549,69 @@
         "kustomize",
         "kubectl"
       ],
-      "safe_patterns": [
-        {
-          "name": "kustomize-build",
-          "regex": "kustomize\\s+build(?!.*\\|)"
-        },
-        {
-          "name": "kubectl-kustomize",
-          "regex": "kubectl\\s+kustomize(?!\\s*\\|)"
-        },
-        {
-          "name": "kustomize-diff",
-          "regex": "kustomize\\s+build\\s+.*\\|\\s*kubectl\\s+diff"
-        },
-        {
-          "name": "kustomize-dry-run",
-          "regex": "kustomize\\s+build\\s+.*\\|\\s*kubectl\\s+.*--dry-run"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "kustomize-delete",
-          "regex": "kustomize\\s+build\\s+.*\\|\\s*kubectl\\s+delete",
+          "when": {
+            "command": [
+              "kustomize"
+            ],
+            "subcommand": [
+              "build"
+            ],
+            "arg_contains": [
+              "| kubectl delete"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kustomize build | kubectl delete removes all resources in the kustomization.",
           "severity": "critical",
           "explanation": "Piping kustomize build to kubectl delete removes ALL resources defined in the kustomization directory. This can delete entire applications:\n\n- Every resource in kustomization.yaml and its bases is deleted\n- Deployments, services, configmaps, secrets all removed\n- Overlays may include resources you didn't expect\n- No confirmation or preview by default\n\nSafer alternatives:\n- kustomize build <dir>: Review manifests first\n- kustomize build <dir> | kubectl delete --dry-run=client -f -: Preview\n- kustomize build <dir> | kubectl diff -f -: Compare with cluster state"
         },
         {
           "name": "kubectl-kustomize-delete",
-          "regex": "kubectl\\s+kustomize\\s+.*\\|\\s*kubectl\\s+delete",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "kustomize"
+            ],
+            "arg_contains": [
+              "| kubectl delete"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl kustomize | kubectl delete removes all resources in the kustomization.",
           "severity": "critical",
           "explanation": "Piping kubectl kustomize to kubectl delete removes ALL resources defined in the kustomization directory. This is equivalent to kustomize build | kubectl delete:\n\n- Entire application stack can be deleted\n- Base and overlay resources are all affected\n- Includes resources from remote URLs if referenced\n- Order of deletion may cause cascading failures\n\nSafer alternatives:\n- kubectl kustomize <dir>: Review manifests first\n- kubectl delete --dry-run=client -k <dir>: Preview deletion\n- kubectl diff -k <dir>: Compare with cluster state"
         },
         {
           "name": "kubectl-delete-k",
-          "regex": "kubectl\\s+delete\\s+-k\\b(?!.*--dry-run)",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ],
+            "flag": [
+              "-k"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "kubectl delete -k removes all resources defined in the kustomization. Use --dry-run first.",
           "severity": "critical",
           "explanation": "kubectl delete -k removes all resources defined in a kustomization directory. This is a convenient but dangerous shorthand:\n\n- All resources in kustomization.yaml are deleted\n- Includes base resources and all overlays\n- May include namespaces, PVCs, and other critical resources\n- No confirmation prompt by default\n\nSafer alternatives:\n- kubectl delete -k <dir> --dry-run=client: Preview what will be deleted\n- kubectl kustomize <dir>: Review manifests before deleting\n- kubectl get -k <dir>: List resources that would be affected"

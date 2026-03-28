@@ -49,6 +49,23 @@ func TestQuickReject_MultipleMatches(t *testing.T) {
 	}
 }
 
+func TestQuickReject_AllPacksNoKeywords(t *testing.T) {
+	idx := NewEnabledKeywordIndex([]PackKeywords{
+		{PackIndex: 0, Keywords: []string{}},
+	})
+	// ac should be nil
+	if idx.ac != nil {
+		t.Fatal("expected ac to be nil for zero keywords")
+	}
+	rejected, mask := idx.QuickReject("anything")
+	if rejected {
+		t.Error("expected rejected=false when no-keyword packs are present")
+	}
+	if !isBitSet(mask, 0) {
+		t.Error("expected pack 0 (no keywords) bit set")
+	}
+}
+
 func TestQuickReject_EmptyIndex(t *testing.T) {
 	idx := NewEnabledKeywordIndex(nil)
 	rejected, _ := idx.QuickReject("anything")
@@ -121,5 +138,72 @@ func TestQuickReject_MixedCaseKeyword(t *testing.T) {
 	}
 	if !isBitSet(mask3, 0) {
 		t.Error("expected pack 0 bit set for uppercase command")
+	}
+}
+
+func TestQuickReject_NoKeywordsPack(t *testing.T) {
+	// A pack with no keywords (e.g., synthetic rules pack with broad regex)
+	// must never be quick-rejected — it should always be a candidate.
+	idx := NewEnabledKeywordIndex([]PackKeywords{
+		{PackIndex: 0, Keywords: []string{"git"}},
+		{PackIndex: 1, Keywords: nil}, // no keywords — always candidate
+	})
+
+	// Command that matches no keywords at all.
+	rejected, mask := idx.QuickReject("echo hello")
+	// Should NOT be rejected because pack 1 (no keywords) is always a candidate.
+	if rejected {
+		t.Fatal("expected rejected=false when a no-keywords pack exists")
+	}
+	if isBitSet(mask, 0) {
+		t.Error("expected pack 0 (git) bit NOT set")
+	}
+	if !isBitSet(mask, 1) {
+		t.Error("expected pack 1 (no keywords) bit set — always candidate")
+	}
+
+	// Command that matches pack 0's keyword — both should be candidates.
+	rejected2, mask2 := idx.QuickReject("git status")
+	if rejected2 {
+		t.Fatal("expected rejected=false")
+	}
+	if !isBitSet(mask2, 0) {
+		t.Error("expected pack 0 (git) bit set")
+	}
+	if !isBitSet(mask2, 1) {
+		t.Error("expected pack 1 (no keywords) bit set — always candidate")
+	}
+}
+
+func TestQuickReject_SupportsPackIndicesBeyond128(t *testing.T) {
+	idx := NewEnabledKeywordIndex([]PackKeywords{
+		{PackIndex: 0, Keywords: []string{"git"}},
+		{PackIndex: 129, Keywords: nil}, // always candidate
+		{PackIndex: 130, Keywords: []string{"pwsh"}},
+	})
+
+	rejected, mask := idx.QuickReject("pwsh -NoProfile")
+	if rejected {
+		t.Fatal("expected rejected=false for high-index keyword match")
+	}
+	if isBitSet(mask, 0) {
+		t.Error("expected pack 0 (git) bit NOT set")
+	}
+	if !isBitSet(mask, 129) {
+		t.Error("expected pack 129 (no keywords) bit set")
+	}
+	if !isBitSet(mask, 130) {
+		t.Error("expected pack 130 (pwsh) bit set")
+	}
+
+	rejected, mask = idx.QuickReject("echo hello")
+	if rejected {
+		t.Fatal("expected rejected=false when a high-index no-keywords pack exists")
+	}
+	if !isBitSet(mask, 129) {
+		t.Error("expected pack 129 (no keywords) bit set on no-match command")
+	}
+	if isBitSet(mask, 130) {
+		t.Error("expected pack 130 (pwsh) bit NOT set on no-match command")
 	}
 }

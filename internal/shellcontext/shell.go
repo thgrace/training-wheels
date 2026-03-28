@@ -111,18 +111,27 @@ func DefaultShell() Shell {
 	return &POSIXShell{}
 }
 
-// FromName returns a Shell implementation by name.
-func FromName(name string) Shell {
-	switch strings.ToLower(name) {
+// ParseShell returns a Shell implementation for a recognized shell name.
+func ParseShell(name string) (Shell, bool) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "powershell", "pwsh":
-		return &PowerShell{}
+		return &PowerShell{}, true
 	case "cmd":
-		return &CmdExe{}
+		return &CmdExe{}, true
 	case "bash", "zsh", "sh", "posix":
-		return &POSIXShell{}
+		return &POSIXShell{}, true
 	default:
-		return DefaultShell()
+		return nil, false
 	}
+}
+
+// FromName returns a Shell implementation by name, falling back to the
+// platform default shell for unknown names.
+func FromName(name string) Shell {
+	if shell, ok := ParseShell(name); ok {
+		return shell
+	}
+	return DefaultShell()
 }
 
 // DetectShellFromCommand attempts to detect the shell type from command content.

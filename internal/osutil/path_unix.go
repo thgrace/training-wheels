@@ -49,11 +49,12 @@ func AddToPath(dir string) (bool, error) {
 	shell := os.Getenv("SHELL")
 	var profilePaths []string
 
-	if strings.Contains(shell, "zsh") {
+	switch {
+	case strings.Contains(shell, "zsh"):
 		profilePaths = append(profilePaths, filepath.Join(home, ".zshrc"))
-	} else if strings.Contains(shell, "fish") {
+	case strings.Contains(shell, "fish"):
 		profilePaths = append(profilePaths, filepath.Join(home, ".config", "fish", "config.fish"))
-	} else {
+	default:
 		// Default to bash/sh common files.
 		profilePaths = append(profilePaths,
 			filepath.Join(home, ".bashrc"),

@@ -26,395 +26,581 @@
         "lvresize",
         "pvmove"
       ],
-      "safe_patterns": [
-        {
-          "name": "dd-file-out",
-          "regex": "dd\\s+.*of=[^/\\s]+\\."
-        },
-        {
-          "name": "dd-discard",
-          "regex": "dd\\s+.*of=/dev/(?:null|zero|full)(?:\\s|$)"
-        },
-        {
-          "name": "lsblk",
-          "regex": "\\blsblk\\b"
-        },
-        {
-          "name": "fdisk-list",
-          "regex": "fdisk\\s+-l"
-        },
-        {
-          "name": "parted-print",
-          "regex": "parted\\s+.*print"
-        },
-        {
-          "name": "blkid",
-          "regex": "\\bblkid\\b"
-        },
-        {
-          "name": "df",
-          "regex": "\\bdf\\b"
-        },
-        {
-          "name": "mount-list",
-          "regex": "\\bmount\\s*$"
-        },
-        {
-          "name": "mdadm-detail",
-          "regex": "mdadm\\s+--detail\\b"
-        },
-        {
-          "name": "mdadm-examine",
-          "regex": "mdadm\\s+--examine\\b"
-        },
-        {
-          "name": "mdadm-query",
-          "regex": "mdadm\\s+--query\\b"
-        },
-        {
-          "name": "mdadm-query-short",
-          "regex": "mdadm\\s+-Q\\b"
-        },
-        {
-          "name": "mdadm-scan",
-          "regex": "mdadm\\s+--scan\\b"
-        },
-        {
-          "name": "btrfs-subvolume-list",
-          "regex": "btrfs\\s+subvolume\\s+list\\b"
-        },
-        {
-          "name": "btrfs-subvolume-show",
-          "regex": "btrfs\\s+subvolume\\s+show\\b"
-        },
-        {
-          "name": "btrfs-filesystem-show",
-          "regex": "btrfs\\s+filesystem\\s+show\\b"
-        },
-        {
-          "name": "btrfs-filesystem-df",
-          "regex": "btrfs\\s+filesystem\\s+df\\b"
-        },
-        {
-          "name": "btrfs-filesystem-usage",
-          "regex": "btrfs\\s+filesystem\\s+usage\\b"
-        },
-        {
-          "name": "btrfs-device-stats",
-          "regex": "btrfs\\s+device\\s+stats\\b"
-        },
-        {
-          "name": "btrfs-property-get",
-          "regex": "btrfs\\s+property\\s+(?:get|list)\\b"
-        },
-        {
-          "name": "btrfs-scrub-status",
-          "regex": "btrfs\\s+scrub\\s+status\\b"
-        },
-        {
-          "name": "dmsetup-ls",
-          "regex": "dmsetup\\s+ls\\b"
-        },
-        {
-          "name": "dmsetup-status",
-          "regex": "dmsetup\\s+status\\b"
-        },
-        {
-          "name": "dmsetup-info",
-          "regex": "dmsetup\\s+info\\b"
-        },
-        {
-          "name": "dmsetup-table",
-          "regex": "dmsetup\\s+table\\b"
-        },
-        {
-          "name": "dmsetup-deps",
-          "regex": "dmsetup\\s+deps\\b"
-        },
-        {
-          "name": "nbd-client-list",
-          "regex": "nbd-client\\s+-l\\b"
-        },
-        {
-          "name": "nbd-client-check",
-          "regex": "nbd-client\\s+.*-check\\b"
-        },
-        {
-          "name": "lvm-list",
-          "regex": "\\b(?:lvs|vgs|pvs)\\b"
-        },
-        {
-          "name": "lvm-display",
-          "regex": "\\b(?:lvdisplay|vgdisplay|pvdisplay)\\b"
-        },
-        {
-          "name": "lvm-scan",
-          "regex": "\\b(?:lvscan|vgscan|pvscan)\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "dd-device",
-          "regex": "dd\\s+.*of=/dev/",
+          "when": {
+            "command": [
+              "dd"
+            ],
+            "arg_contains": [
+              "of=/dev/"
+            ]
+          },
+          "unless": {
+            "arg_contains": [
+              "of=/dev/null",
+              "of=/dev/zero",
+              "of=/dev/full"
+            ]
+          },
           "reason": "dd to a block device will OVERWRITE all data on that device. Extremely dangerous!",
           "severity": "critical",
           "explanation": "dd writes directly to a block device, overwriting all existing data. This is one of the most destructive operations possible on a Linux system and is irreversible."
         },
         {
           "name": "dd-wipe",
-          "regex": "dd\\s+.*if=/dev/(?:zero|urandom|random).*of=/dev/",
+          "when": {
+            "command": [
+              "dd"
+            ],
+            "arg_contains": [
+              "if=/dev/zero",
+              "if=/dev/urandom",
+              "if=/dev/random",
+              "of=/dev/"
+            ]
+          },
+          "unless": {
+            "arg_contains": [
+              "of=/dev/null",
+              "of=/dev/zero",
+              "of=/dev/full"
+            ]
+          },
           "reason": "dd from /dev/zero or /dev/urandom to a device will WIPE all data!",
           "severity": "critical",
           "explanation": "Writing zeroes or random data from /dev/zero or /dev/urandom to a block device permanently wipes all data on that device. This operation is completely irreversible."
         },
         {
           "name": "fdisk-edit",
-          "regex": "fdisk\\s+/dev/(?!.*-l)",
+          "when": {
+            "command": [
+              "fdisk"
+            ],
+            "arg_contains": [
+              "/dev/"
+            ]
+          },
+          "unless": {
+            "flag": [
+              "-l"
+            ]
+          },
           "reason": "fdisk can modify partition tables and cause data loss.",
           "severity": "critical",
           "explanation": "fdisk modifies the partition table of a disk. Incorrect changes can destroy the partition layout, making all data on the disk inaccessible."
         },
         {
           "name": "parted-modify",
-          "regex": "parted\\s+/dev/\\S+\\s+(?!print)",
+          "when": {
+            "command": [
+              "parted"
+            ],
+            "arg_contains": [
+              "/dev/"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "print"
+            ]
+          },
           "reason": "parted can modify partition tables and cause data loss.",
           "severity": "critical",
           "explanation": "parted modifies disk partitions. Resizing, deleting, or creating partitions can result in permanent data loss."
         },
         {
           "name": "mkfs",
-          "regex": "mkfs(?:\\.[a-z0-9]+)?\\s+",
+          "when": {
+            "command": [
+              "mkfs",
+              "mkfs.ext2",
+              "mkfs.ext3",
+              "mkfs.ext4",
+              "mkfs.xfs",
+              "mkfs.btrfs",
+              "mkfs.vfat",
+              "mkfs.ntfs",
+              "mkfs.fat"
+            ]
+          },
           "reason": "mkfs formats a partition/device and ERASES all existing data.",
           "severity": "critical",
           "explanation": "mkfs creates a new filesystem on a device, erasing all existing data. This operation is irreversible."
         },
         {
           "name": "wipefs",
-          "regex": "wipefs\\s+",
+          "when": {
+            "command": [
+              "wipefs"
+            ]
+          },
           "reason": "wipefs removes filesystem signatures. Use with extreme caution.",
           "severity": "high",
           "explanation": "wipefs removes filesystem, RAID, and partition-table signatures from a device. This makes the data unrecognizable to the OS without explicitly overwriting the underlying data."
         },
         {
           "name": "mount-bind-root",
-          "regex": "mount\\s+.*--bind\\s+/(?:\\s|$)",
+          "when": {
+            "command": [
+              "mount"
+            ],
+            "flag": [
+              "--bind"
+            ],
+            "arg_exact": [
+              "/"
+            ]
+          },
           "reason": "mount --bind to root directory can have system-wide effects.",
           "severity": "high",
           "explanation": "Bind-mounting to the root directory or a top-level system path can obscure system files and have unpredictable system-wide effects."
         },
         {
           "name": "umount-force",
-          "regex": "umount\\s+.*-[a-z]*f",
+          "when": {
+            "command": [
+              "umount"
+            ],
+            "flag": [
+              "-f"
+            ]
+          },
           "reason": "umount -f force unmounts which may cause data loss if device is in use.",
           "severity": "high",
           "explanation": "Force unmounting a device that is actively in use can cause data loss and filesystem corruption. Always ensure no processes are using the device before unmounting."
         },
         {
           "name": "losetup-device",
-          "regex": "losetup\\s+/dev/loop",
+          "when": {
+            "command": [
+              "losetup"
+            ],
+            "arg_contains": [
+              "/dev/loop"
+            ]
+          },
           "reason": "losetup modifies loop device associations. Verify before proceeding.",
           "severity": "medium",
           "explanation": "losetup associates files with loop devices. Incorrect associations can expose unintended data or overwrite existing loop device contents."
         },
         {
           "name": "mdadm-stop",
-          "regex": "mdadm\\s+(?:.*\\s+)?(?:--stop|-S)\\b",
+          "when": {
+            "command": [
+              "mdadm"
+            ],
+            "flag": [
+              "--stop",
+              "-S"
+            ]
+          },
           "reason": "mdadm --stop shuts down a RAID array. Data may become inaccessible.",
           "severity": "high",
           "explanation": "Stopping a RAID array makes the data inaccessible until the array is reassembled. If done incorrectly, it can lead to data loss."
         },
         {
           "name": "mdadm-remove",
-          "regex": "mdadm\\s+(?:.*\\s+)?--remove\\b",
+          "when": {
+            "command": [
+              "mdadm"
+            ],
+            "flag": [
+              "--remove"
+            ]
+          },
           "reason": "mdadm --remove removes a drive from a RAID array. May cause data loss if redundancy is lost.",
           "severity": "high",
           "explanation": "Removing a drive from a RAID array reduces redundancy. If the array has no spare redundancy, removing a drive can cause data loss."
         },
         {
           "name": "mdadm-fail",
-          "regex": "mdadm\\s+(?:.*\\s+)?(?:--fail|-f)\\b",
+          "when": {
+            "command": [
+              "mdadm"
+            ],
+            "flag": [
+              "--fail",
+              "-f"
+            ]
+          },
           "reason": "mdadm --fail marks a device as failed. Use only for intentional drive replacement.",
           "severity": "high",
           "explanation": "Marking a device as failed in a RAID array triggers a degraded state. If redundancy is already exhausted, this causes data loss."
         },
         {
           "name": "mdadm-zero-superblock",
-          "regex": "mdadm\\s+(?:.*\\s+)?--zero-superblock\\b",
+          "when": {
+            "command": [
+              "mdadm"
+            ],
+            "flag": [
+              "--zero-superblock"
+            ]
+          },
           "reason": "mdadm --zero-superblock PERMANENTLY erases RAID metadata. Array cannot be reassembled.",
           "severity": "critical",
           "explanation": "Zeroing the superblock destroys the RAID metadata on a device. The array cannot be reassembled after this operation."
         },
         {
           "name": "mdadm-create",
-          "regex": "mdadm\\s+(?:.*\\s+)?(?:--create|-C)\\b",
+          "when": {
+            "command": [
+              "mdadm"
+            ],
+            "flag": [
+              "--create",
+              "-C"
+            ]
+          },
           "reason": "mdadm --create initializes a new RAID array, ERASING existing data on member devices.",
           "severity": "critical",
           "explanation": "Creating a new RAID array destroys any existing data on the member devices. Verify all device paths before proceeding."
         },
         {
           "name": "mdadm-grow",
-          "regex": "mdadm\\s+(?:.*\\s+)?--grow\\b",
+          "when": {
+            "command": [
+              "mdadm"
+            ],
+            "flag": [
+              "--grow"
+            ]
+          },
           "reason": "mdadm --grow reshapes a RAID array. Interruption can cause data loss. Backup first.",
           "severity": "high",
           "explanation": "Reshaping a RAID array is a long-running operation. If interrupted by a power failure or system crash, the array may become corrupted. Always backup data first."
         },
         {
           "name": "btrfs-subvolume-delete",
-          "regex": "btrfs\\s+subvolume\\s+delete\\b",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "subvolume"
+            ],
+            "arg_exact": [
+              "delete"
+            ]
+          },
           "reason": "btrfs subvolume delete PERMANENTLY removes a subvolume and all its data.",
           "severity": "critical",
           "explanation": "Deleting a btrfs subvolume permanently removes all files and directories within it. This operation is irreversible."
         },
         {
           "name": "btrfs-device-remove",
-          "regex": "btrfs\\s+device\\s+(?:remove|delete)\\b",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "device",
+              "remove"
+            ]
+          },
           "reason": "btrfs device remove redistributes data off a device. Interruption causes data loss.",
           "severity": "high",
           "explanation": "Removing a device from a btrfs filesystem triggers data redistribution. If interrupted, the filesystem may become corrupted."
         },
         {
+          "name": "btrfs-device-delete",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "device",
+              "delete"
+            ]
+          },
+          "reason": "btrfs device delete redistributes data off a device. Interruption causes data loss.",
+          "severity": "high",
+          "explanation": "Removing a device from a btrfs filesystem triggers data redistribution. If interrupted, the filesystem may become corrupted."
+        },
+        {
           "name": "btrfs-device-add",
-          "regex": "btrfs\\s+device\\s+add\\b",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "device",
+              "add"
+            ]
+          },
           "reason": "btrfs device add incorporates a device into the filesystem. Verify the device is correct.",
           "severity": "medium",
           "explanation": "Adding a device to a btrfs filesystem is generally safe, but using the wrong device path can inadvertently include a device with important data."
         },
         {
           "name": "btrfs-balance",
-          "regex": "btrfs\\s+balance\\s+start\\b",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "balance",
+              "start"
+            ]
+          },
           "reason": "btrfs balance redistributes data across devices. Can be slow and disruptive.",
           "severity": "medium",
           "explanation": "btrfs balance is a long-running operation that redistributes data across devices. While not inherently destructive, it consumes significant I/O and can impact performance."
         },
         {
           "name": "btrfs-check-repair",
-          "regex": "btrfs\\s+check\\s+(?:.*\\s+)?--repair\\b",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "check"
+            ],
+            "flag": [
+              "--repair"
+            ]
+          },
           "reason": "btrfs check --repair is DANGEROUS and can cause data loss. Backup first!",
           "severity": "critical",
           "explanation": "btrfs check --repair can make incorrect repairs that result in data loss. Only use as a last resort and always backup data first."
         },
         {
           "name": "btrfs-rescue",
-          "regex": "btrfs\\s+rescue\\b",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "rescue"
+            ]
+          },
           "reason": "btrfs rescue operations modify filesystem metadata. Use only as last resort.",
           "severity": "high",
           "explanation": "btrfs rescue operations modify low-level filesystem metadata. Incorrect use can cause further corruption."
         },
         {
           "name": "btrfs-filesystem-resize",
-          "regex": "btrfs\\s+filesystem\\s+resize\\b",
+          "when": {
+            "command": [
+              "btrfs"
+            ],
+            "subcommand": [
+              "filesystem"
+            ],
+            "arg_exact": [
+              "resize"
+            ]
+          },
           "reason": "btrfs filesystem resize can shrink a filesystem. Data loss if size is too small.",
           "severity": "high",
           "explanation": "Shrinking a btrfs filesystem to a size smaller than the used space will cause data loss. Always verify free space before shrinking."
         },
         {
           "name": "dmsetup-remove",
-          "regex": "dmsetup\\s+remove\\b",
+          "when": {
+            "command": [
+              "dmsetup"
+            ],
+            "subcommand": [
+              "remove"
+            ]
+          },
           "reason": "dmsetup remove detaches a device-mapper device. May cause data loss if in use.",
           "severity": "high",
           "explanation": "Removing a device-mapper device that is still in use can cause I/O errors and data corruption for any processes using it."
         },
         {
           "name": "dmsetup-remove-all",
-          "regex": "dmsetup\\s+remove_all\\b",
+          "when": {
+            "command": [
+              "dmsetup"
+            ],
+            "subcommand": [
+              "remove_all"
+            ]
+          },
           "reason": "dmsetup remove_all removes ALL device-mapper devices. Extremely dangerous!",
           "severity": "critical",
           "explanation": "Removing all device-mapper devices at once can take down LVM volumes, encrypted devices, and software RAID, causing widespread data loss and system instability."
         },
         {
           "name": "dmsetup-wipe-table",
-          "regex": "dmsetup\\s+wipe_table\\b",
+          "when": {
+            "command": [
+              "dmsetup"
+            ],
+            "subcommand": [
+              "wipe_table"
+            ]
+          },
           "reason": "dmsetup wipe_table replaces the device table, causing all I/O to fail.",
           "severity": "high",
           "explanation": "Wiping the device-mapper table replaces it with an error target, causing all I/O to the device to fail immediately."
         },
         {
           "name": "dmsetup-clear",
-          "regex": "dmsetup\\s+clear\\b",
+          "when": {
+            "command": [
+              "dmsetup"
+            ],
+            "subcommand": [
+              "clear"
+            ]
+          },
           "reason": "dmsetup clear removes the mapping table from a device.",
           "severity": "high",
           "explanation": "Clearing the device-mapper table removes the mapping, making the device inaccessible."
         },
         {
           "name": "dmsetup-load",
-          "regex": "dmsetup\\s+load\\b",
+          "when": {
+            "command": [
+              "dmsetup"
+            ],
+            "subcommand": [
+              "load"
+            ]
+          },
           "reason": "dmsetup load changes device mapping. Verify the new table is correct.",
           "severity": "medium",
           "explanation": "Loading a new device-mapper table changes how the device maps to underlying storage. Incorrect tables can corrupt data."
         },
         {
           "name": "dmsetup-create",
-          "regex": "dmsetup\\s+create\\b",
+          "when": {
+            "command": [
+              "dmsetup"
+            ],
+            "subcommand": [
+              "create"
+            ]
+          },
           "reason": "dmsetup create sets up a new device-mapper device. Verify parameters carefully.",
           "severity": "medium",
           "explanation": "Creating a new device-mapper device with incorrect parameters can map to unintended storage, potentially overwriting existing data."
         },
         {
           "name": "nbd-client-disconnect",
-          "regex": "nbd-client\\s+(?:.*\\s+)?-d\\b",
+          "when": {
+            "command": [
+              "nbd-client"
+            ],
+            "flag": [
+              "-d"
+            ]
+          },
           "reason": "nbd-client -d disconnects a network block device. Data loss if not properly unmounted.",
           "severity": "high",
           "explanation": "Disconnecting a network block device without first unmounting it can cause data loss and filesystem corruption."
         },
         {
           "name": "nbd-client-connect",
-          "regex": "nbd-client\\s+\\S+\\s+\\d+\\s+/dev/nbd",
+          "when": {
+            "command": [
+              "nbd-client"
+            ],
+            "arg_contains": [
+              "/dev/nbd"
+            ]
+          },
           "reason": "nbd-client connecting a device can expose or overwrite data. Verify server and device.",
           "severity": "high",
           "explanation": "Connecting a network block device to an already-in-use /dev/nbd device can overwrite existing data. Verify the device is free before connecting."
         },
         {
           "name": "pvremove",
-          "regex": "\\bpvremove\\b",
+          "when": {
+            "command": [
+              "pvremove"
+            ]
+          },
           "reason": "pvremove ERASES LVM metadata from a physical volume. Data becomes inaccessible.",
           "severity": "critical",
           "explanation": "pvremove destroys the LVM metadata on a physical volume, making any LVM data stored on it inaccessible."
         },
         {
           "name": "vgremove",
-          "regex": "\\bvgremove\\b",
+          "when": {
+            "command": [
+              "vgremove"
+            ]
+          },
           "reason": "vgremove DELETES a volume group and all logical volumes within it.",
           "severity": "critical",
           "explanation": "vgremove deletes the volume group and all logical volumes within it, destroying all data stored in those volumes."
         },
         {
           "name": "lvremove",
-          "regex": "\\blvremove\\b",
+          "when": {
+            "command": [
+              "lvremove"
+            ]
+          },
           "reason": "lvremove PERMANENTLY deletes a logical volume and ALL its data.",
           "severity": "critical",
           "explanation": "lvremove permanently deletes a logical volume and all data stored within it. This operation is irreversible."
         },
         {
           "name": "vgreduce",
-          "regex": "\\bvgreduce\\b",
+          "when": {
+            "command": [
+              "vgreduce"
+            ]
+          },
           "reason": "vgreduce removes a physical volume from a volume group. Data may be lost.",
           "severity": "high",
           "explanation": "vgreduce removes a physical volume from a volume group. If data has not been moved off the PV first, that data will be lost."
         },
         {
           "name": "lvreduce",
-          "regex": "\\blvreduce\\b",
+          "when": {
+            "command": [
+              "lvreduce"
+            ]
+          },
           "reason": "lvreduce SHRINKS a logical volume. Data loss if filesystem isn't resized first!",
           "severity": "critical",
           "explanation": "lvreduce shrinks a logical volume. If the filesystem is not shrunk first, the filesystem will be truncated and data will be lost."
         },
         {
           "name": "lvresize-shrink",
-          "regex": "lvresize\\s+(?:.*\\s+)?(?:-L\\s*-|-l\\s*-|--size\\s+\\S*-)",
+          "when": {
+            "command": [
+              "lvresize"
+            ],
+            "arg_contains": [
+              "-L -",
+              "-l -",
+              "--size -"
+            ]
+          },
           "reason": "lvresize with negative size SHRINKS the volume. Resize filesystem first or lose data!",
           "severity": "critical",
           "explanation": "Shrinking a logical volume without first shrinking the filesystem will truncate the filesystem and cause data loss."
         },
         {
           "name": "pvmove",
-          "regex": "\\bpvmove\\b",
+          "when": {
+            "command": [
+              "pvmove"
+            ]
+          },
           "reason": "pvmove migrates data between physical volumes. Do NOT interrupt or data may be lost.",
           "severity": "high",
           "explanation": "pvmove migrates data between physical volumes. If interrupted by a power failure or system crash, the LVM metadata may become inconsistent and data may be lost."
         },
         {
           "name": "lvconvert-merge",
-          "regex": "lvconvert\\s+(?:.*\\s+)?--merge\\b",
+          "when": {
+            "command": [
+              "lvconvert"
+            ],
+            "flag": [
+              "--merge"
+            ]
+          },
           "reason": "lvconvert --merge reverts LV to snapshot state, discarding changes since snapshot.",
           "severity": "high",
           "explanation": "Merging an LVM snapshot reverts the logical volume to the state at snapshot creation time. All changes made to the LV after the snapshot was taken are permanently discarded."
@@ -431,32 +617,18 @@
         "chgrp",
         "setfacl"
       ],
-      "safe_patterns": [
-        {
-          "name": "chmod-non-recursive",
-          "regex": "chmod\\s+(?!-[rR])(?:\\d{3,4}|[ugoa][+-][rwxXst]+)\\s+[^/]"
-        },
-        {
-          "name": "stat",
-          "regex": "\\bstat\\b"
-        },
-        {
-          "name": "ls-perms",
-          "regex": "ls\\s+.*-[a-zA-Z]*l"
-        },
-        {
-          "name": "getfacl",
-          "regex": "\\bgetfacl\\b"
-        },
-        {
-          "name": "namei",
-          "regex": "\\bnamei\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "chmod-777",
-          "regex": "chmod\\s+(?:.*\\s+)?[\"'=]?0*777(?:[\\s\"']|$)",
+          "when": {
+            "command": [
+              "chmod"
+            ],
+            "arg_exact": [
+              "777",
+              "0777"
+            ]
+          },
           "reason": "chmod 777 makes files world-writable. This is a security risk.",
           "severity": "high",
           "explanation": "chmod 777 grants read/write/execute to everyone. This can expose sensitive files and allow unauthorized modification. Prefer least-privilege permissions that only grant the specific access needed.",
@@ -473,14 +645,68 @@
         },
         {
           "name": "chmod-recursive-root",
-          "regex": "chmod\\s+(?:.*(?:-[rR]|--recursive)).*\\s+/(?:$|bin|boot|dev|etc|lib|lib64|opt|proc|root|run|sbin|srv|sys|usr|var)\\b",
+          "when": {
+            "command": [
+              "chmod"
+            ],
+            "flag": [
+              "-R",
+              "-r",
+              "--recursive"
+            ],
+            "arg_prefix": [
+              "/",
+              "/bin",
+              "/boot",
+              "/dev",
+              "/etc",
+              "/lib",
+              "/lib64",
+              "/opt",
+              "/proc",
+              "/root",
+              "/run",
+              "/sbin",
+              "/srv",
+              "/sys",
+              "/usr",
+              "/var"
+            ]
+          },
           "reason": "chmod -R on system directories can break system permissions.",
           "severity": "critical",
           "explanation": "Recursively changing permissions on system directories can render the system unbootable, break package management, and disrupt every running service. Many system files require specific permission bits to function correctly.\n\nCheck current permissions first:\n  ls -la /path/to/directory\n\nApply changes to a specific subdirectory instead of the whole tree."
         },
         {
           "name": "chown-recursive-root",
-          "regex": "chown\\s+(?:.*(?:-[rR]|--recursive)).*\\s+/(?:$|bin|boot|dev|etc|lib|lib64|opt|proc|root|run|sbin|srv|sys|usr|var)\\b",
+          "when": {
+            "command": [
+              "chown"
+            ],
+            "flag": [
+              "-R",
+              "-r",
+              "--recursive"
+            ],
+            "arg_prefix": [
+              "/",
+              "/bin",
+              "/boot",
+              "/dev",
+              "/etc",
+              "/lib",
+              "/lib64",
+              "/opt",
+              "/proc",
+              "/root",
+              "/run",
+              "/sbin",
+              "/srv",
+              "/sys",
+              "/usr",
+              "/var"
+            ]
+          },
           "reason": "chown -R on system directories can break system ownership.",
           "severity": "high",
           "explanation": "Recursive ownership changes on system directories can disrupt services, break package-managed files, and be difficult to undo. Start with a single path or a shallow find before applying broader changes.",
@@ -497,28 +723,75 @@
         },
         {
           "name": "chmod-setuid",
-          "regex": "chmod\\s+.*u\\+s|chmod\\s+[4-7]\\d{3}",
+          "when": {
+            "command": [
+              "chmod"
+            ],
+            "arg_contains": [
+              "u+s"
+            ]
+          },
           "reason": "Setting setuid bit (chmod u+s) is a security-sensitive operation.",
           "severity": "high",
           "explanation": "The setuid bit causes a program to run with the file owner's privileges regardless of who executes it. If set on the wrong binary, any user can gain elevated access. This is a common privilege escalation vector.\n\nVerify the file and owner first:\n  ls -la <file>\n\nFind existing setuid files:\n  find / -perm -4000 -type f 2>/dev/null"
         },
         {
           "name": "chmod-setgid",
-          "regex": "chmod\\s+.*g\\+s|chmod\\s+[2367]\\d{3}",
+          "when": {
+            "command": [
+              "chmod"
+            ],
+            "arg_contains": [
+              "g+s"
+            ]
+          },
           "reason": "Setting setgid bit (chmod g+s) is a security-sensitive operation.",
           "severity": "high",
           "explanation": "The setgid bit on an executable causes it to run with the file group's privileges. On a directory, new files inherit the directory's group. Misapplication can grant unintended group access to sensitive resources.\n\nCheck current group ownership:\n  ls -la <file>\n\nFind existing setgid files:\n  find / -perm -2000 -type f 2>/dev/null"
         },
         {
           "name": "chown-to-root",
-          "regex": "chown\\s+.*root[:\\s]",
+          "when": {
+            "command": [
+              "chown"
+            ],
+            "arg_contains": [
+              "root:"
+            ]
+          },
           "reason": "Changing ownership to root should be done carefully.",
           "severity": "high",
           "explanation": "Transferring file ownership to root makes the files inaccessible to normal users and may break applications that need to write to those files. Services running as non-root users will lose access.\n\nCheck who currently owns the file:\n  ls -la <path>\n\nConsider using group ownership instead:\n  chgrp <group> <path>"
         },
         {
           "name": "setfacl-all",
-          "regex": "setfacl\\s+.*-[rR].*\\s+/(?:$|bin|boot|dev|etc|lib|lib64|opt|proc|root|run|sbin|srv|sys|usr|var)\\b",
+          "when": {
+            "command": [
+              "setfacl"
+            ],
+            "flag": [
+              "-R",
+              "-r"
+            ],
+            "arg_prefix": [
+              "/",
+              "/bin",
+              "/boot",
+              "/dev",
+              "/etc",
+              "/lib",
+              "/lib64",
+              "/opt",
+              "/proc",
+              "/root",
+              "/run",
+              "/sbin",
+              "/srv",
+              "/sys",
+              "/usr",
+              "/var"
+            ]
+          },
           "reason": "setfacl -R on system directories can modify access control across the filesystem.",
           "severity": "critical",
           "explanation": "Recursively modifying ACLs on system directories changes fine-grained access control for every file in the tree. This can override traditional Unix permissions and grant or revoke access in unexpected ways, breaking services and security boundaries.\n\nReview current ACLs first:\n  getfacl <path>\n\nApply to a specific file instead of recursively:\n  setfacl -m u:<user>:rwx <specific-file>"
@@ -537,93 +810,135 @@
         "shutdown",
         "reboot"
       ],
-      "safe_patterns": [
-        {
-          "name": "systemctl-status",
-          "regex": "systemctl\\s+status"
-        },
-        {
-          "name": "service-status",
-          "regex": "service\\s+\\S+\\s+status"
-        },
-        {
-          "name": "systemctl-list",
-          "regex": "systemctl\\s+list-(?:units|unit-files|sockets|timers)"
-        },
-        {
-          "name": "systemctl-show",
-          "regex": "systemctl\\s+show"
-        },
-        {
-          "name": "systemctl-is",
-          "regex": "systemctl\\s+is-(?:active|enabled|failed)"
-        },
-        {
-          "name": "systemctl-reload",
-          "regex": "systemctl\\s+daemon-reload"
-        },
-        {
-          "name": "systemctl-cat",
-          "regex": "systemctl\\s+cat"
-        },
-        {
-          "name": "journalctl",
-          "regex": "\\bjournalctl\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "systemctl-stop-critical",
-          "regex": "systemctl\\s+(?:stop|disable|mask)\\s+(?:ssh|sshd|network|networking|firewalld|ufw|docker|containerd)",
+          "when": {
+            "command": [
+              "systemctl"
+            ],
+            "subcommand": [
+              "stop",
+              "disable",
+              "mask"
+            ],
+            "arg_contains": [
+              "ssh",
+              "sshd",
+              "network",
+              "networking",
+              "firewalld",
+              "ufw",
+              "docker",
+              "containerd"
+            ]
+          },
           "reason": "Stopping/disabling critical services can cause system access loss or outage.",
           "severity": "high",
           "explanation": "Stopping, disabling, or masking a critical system service can lock you out of the machine or cause cascading failures. For example, stopping sshd severs remote access, stopping networking drops all connections, and stopping docker kills every running container.\n\nCheck current state first:\n  systemctl status <service>\n\nIf you need to restart rather than stop:\n  systemctl restart <service>"
         },
         {
           "name": "systemctl-stop",
-          "regex": "systemctl\\s+(?:stop|disable|mask)\\b",
+          "when": {
+            "command": [
+              "systemctl"
+            ],
+            "subcommand": [
+              "stop",
+              "disable",
+              "mask"
+            ]
+          },
           "reason": "systemctl stop/disable/mask affects service availability. Verify service name.",
           "severity": "high",
           "explanation": "Stopping a service immediately terminates it; disabling prevents it from starting at boot; masking makes it impossible to start even manually. Each has different severity and reversibility.\n\nCheck what depends on the service:\n  systemctl list-dependencies --reverse <service>\n\nTo temporarily stop without disabling:\n  systemctl stop <service>  (restarts on reboot)"
         },
         {
           "name": "service-stop-critical",
-          "regex": "service\\s+(?:ssh|sshd|network|networking|docker)\\s+stop",
+          "when": {
+            "command": [
+              "service"
+            ],
+            "arg_contains": [
+              "ssh",
+              "sshd",
+              "network",
+              "networking",
+              "docker"
+            ],
+            "subcommand": [
+              "stop"
+            ]
+          },
           "reason": "Stopping critical services can cause system access loss.",
           "severity": "high",
           "explanation": "The legacy 'service' command stops a critical service immediately. Stopping sshd terminates remote access, stopping networking drops all connections. If you are connected remotely, you may be unable to reconnect.\n\nCheck status first:\n  service <name> status\n\nPrefer systemctl on systemd systems:\n  systemctl status <name>"
         },
         {
           "name": "systemctl-isolate",
-          "regex": "systemctl\\s+isolate",
+          "when": {
+            "command": [
+              "systemctl"
+            ],
+            "subcommand": [
+              "isolate"
+            ]
+          },
           "reason": "systemctl isolate changes the system state significantly.",
           "severity": "high",
           "explanation": "Isolating a target stops all services not required by that target. For example, isolating rescue.target drops to single-user mode, stopping networking, display managers, and most daemons. This is equivalent to changing the runlevel and can be very disruptive.\n\nCheck current target:\n  systemctl get-default\n\nList active targets:\n  systemctl list-units --type=target"
         },
         {
           "name": "systemctl-power",
-          "regex": "systemctl\\s+(?:poweroff|reboot|halt|suspend|hibernate)",
+          "when": {
+            "command": [
+              "systemctl"
+            ],
+            "subcommand": [
+              "poweroff",
+              "reboot",
+              "halt",
+              "suspend",
+              "hibernate"
+            ]
+          },
           "reason": "systemctl poweroff/reboot/halt will shut down or restart the system.",
           "severity": "critical",
           "explanation": "This immediately initiates a system power state change. Poweroff and halt shut down the machine, reboot restarts it, and suspend/hibernate save state to RAM or disk. Any unsaved work, running processes, or active connections will be interrupted.\n\nCheck who is logged in:\n  who\n\nSchedule a graceful shutdown instead:\n  shutdown +5 \"Rebooting for maintenance\""
         },
         {
           "name": "shutdown",
-          "regex": "\\bshutdown\\b",
+          "when": {
+            "command": [
+              "shutdown"
+            ]
+          },
           "reason": "shutdown will power off or restart the system.",
           "severity": "critical",
           "explanation": "The shutdown command powers off or restarts the machine. All running processes receive SIGTERM then SIGKILL, all filesystems are unmounted, and the system goes down. Remote users lose access immediately.\n\nTo cancel a pending shutdown:\n  shutdown -c\n\nTo schedule with warning:\n  shutdown +10 \"System going down for maintenance\""
         },
         {
           "name": "reboot",
-          "regex": "\\breboot\\b",
+          "when": {
+            "command": [
+              "reboot"
+            ]
+          },
           "reason": "reboot will restart the system.",
           "severity": "critical",
           "explanation": "Reboot restarts the machine immediately. All processes are terminated, connections are dropped, and the system goes through a full restart cycle. Any unsaved work is lost and services will be briefly unavailable.\n\nCheck uptime and load before deciding:\n  uptime\n\nFor a delayed reboot with notice:\n  shutdown -r +5 \"Rebooting in 5 minutes\""
         },
         {
           "name": "init-level",
-          "regex": "\\binit\\s+[06]\\b",
+          "when": {
+            "command": [
+              "init"
+            ],
+            "arg_contains": [
+              "0",
+              "6"
+            ]
+          },
           "reason": "init 0 shuts down, init 6 reboots the system.",
           "severity": "critical",
           "explanation": "Changing the init level to 0 halts the system and to 6 reboots it. This is the legacy SysV method for power management and takes effect immediately. All processes are killed and the machine goes down.\n\nOn systemd systems, prefer:\n  systemctl poweroff  (instead of init 0)\n  systemctl reboot    (instead of init 6)\n\nCheck current runlevel:\n  runlevel"
@@ -640,27 +955,32 @@
         "eraseDisk",
         "eraseVolume"
       ],
-      "safe_patterns": [
-        {
-          "name": "tmutil-list",
-          "regex": "(?i)tmutil\\s+(?:list|status|destination|thin|snapshot|compare)\\b"
-        },
-        {
-          "name": "diskutil-list",
-          "regex": "(?i)diskutil\\s+(?:list|info|activity|listpartition|verifyVolume|verifyDisk)\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "tmutil-delete",
-          "regex": "(?i)tmutil\\s+delete\\b",
+          "when": {
+            "command": [
+              "tmutil"
+            ],
+            "subcommand": [
+              "delete"
+            ]
+          },
           "reason": "tmutil delete removes Time Machine backups permanently.",
           "severity": "critical",
           "explanation": "Deleting Time Machine backups removes historical versions of your files. This cannot be undone and reduces your ability to recover from data loss or system corruption.\n\nCheck backups first:\n  tmutil listbackups"
         },
         {
           "name": "diskutil-erase",
-          "regex": "(?i)diskutil\\s+erase(?:Disk|Volume)\\b",
+          "when": {
+            "command": [
+              "diskutil"
+            ],
+            "subcommand": [
+              "eraseDisk",
+              "eraseVolume"
+            ]
+          },
           "reason": "diskutil eraseDisk/eraseVolume destroys all data on the target disk or volume.",
           "severity": "critical",
           "explanation": "Erasing a disk or volume permanently destroys all data on it and creates a new partition map or filesystem. This is irreversible.\n\nList disks first:\n  diskutil list"

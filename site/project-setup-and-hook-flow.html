@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Wheels: Project Setup and Hook Evaluation Flow</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --paper: #fffaf2;
+      --ink: #1f1a17;
+      --muted: #5d544d;
+      --line: #d8cdbd;
+      --accent: #0f766e;
+      --accent-soft: #d8f0ea;
+      --warm: #b45309;
+      --warm-soft: #fde7c2;
+      --danger: #9a3412;
+      --danger-soft: #fee2d5;
+      --shadow: 0 20px 50px rgba(54, 42, 32, 0.12);
+      --radius: 18px;
+      --mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 28%),
+        radial-gradient(circle at top left, rgba(180, 83, 9, 0.12), transparent 24%),
+        linear-gradient(180deg, #f8f2e8 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.55;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      width: min(1200px, calc(100% - 32px));
+      margin: 24px auto 72px;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 24px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      background: rgba(255, 250, 242, 0.84);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(216, 205, 189, 0.9);
+      border-radius: var(--radius);
+      padding: 22px 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar h1 {
+      margin: 0 0 10px;
+      font-size: 1.25rem;
+      line-height: 1.2;
+    }
+
+    .sidebar p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .toc {
+      display: grid;
+      gap: 8px;
+    }
+
+    .toc a {
+      text-decoration: none;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      border: 1px solid transparent;
+      transition: 160ms ease;
+    }
+
+    .toc a:hover {
+      color: var(--ink);
+      background: rgba(15, 118, 110, 0.06);
+      border-color: rgba(15, 118, 110, 0.14);
+    }
+
+    .main {
+      display: grid;
+      gap: 24px;
+    }
+
+    .hero,
+    .section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 2px);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      overflow: hidden;
+    }
+
+    .hero-top {
+      padding: 34px 34px 16px;
+      background:
+        linear-gradient(135deg, rgba(15, 118, 110, 0.1), rgba(255, 250, 242, 0) 58%),
+        linear-gradient(180deg, rgba(180, 83, 9, 0.08), rgba(255, 250, 242, 0));
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(31, 26, 23, 0.05);
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .hero h2 {
+      margin: 16px 0 10px;
+      font-size: clamp(2rem, 3vw, 3.2rem);
+      line-height: 1.02;
+      max-width: 12ch;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 70ch;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      padding: 18px 34px 34px;
+    }
+
+    .stat {
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.6);
+      border: 1px solid rgba(216, 205, 189, 0.9);
+    }
+
+    .stat strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+    }
+
+    .stat span {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .section {
+      padding: 28px 30px 30px;
+    }
+
+    .section h3 {
+      margin: 0 0 10px;
+      font-size: 1.55rem;
+      line-height: 1.15;
+    }
+
+    .section > p {
+      margin: 0 0 20px;
+      color: var(--muted);
+      max-width: 72ch;
+    }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(250, 244, 234, 0.75));
+    }
+
+    .card h4 {
+      margin: 0 0 8px;
+      font-size: 1.02rem;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .chip {
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      border: 1px solid rgba(31, 26, 23, 0.08);
+      background: rgba(31, 26, 23, 0.04);
+      color: var(--muted);
+    }
+
+    .flow {
+      display: grid;
+      gap: 14px;
+      position: relative;
+      margin-top: 10px;
+    }
+
+    .flow::before {
+      content: "";
+      position: absolute;
+      left: 17px;
+      top: 6px;
+      bottom: 6px;
+      width: 2px;
+      background: linear-gradient(180deg, rgba(15, 118, 110, 0.35), rgba(180, 83, 9, 0.35));
+    }
+
+    .step {
+      position: relative;
+      margin-left: 42px;
+      padding: 16px 16px 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 243, 235, 0.9));
+    }
+
+    .step::before {
+      content: attr(data-step);
+      position: absolute;
+      left: -42px;
+      top: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.88rem;
+      box-shadow: 0 8px 20px rgba(15, 118, 110, 0.25);
+    }
+
+    .step h4 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .step code,
+    .file,
+    .mini pre,
+    .legend code {
+      font-family: var(--mono);
+    }
+
+    .callout {
+      padding: 16px 18px;
+      border-radius: 16px;
+      margin-top: 16px;
+      border: 1px solid transparent;
+    }
+
+    .callout.info {
+      background: var(--accent-soft);
+      border-color: rgba(15, 118, 110, 0.18);
+    }
+
+    .callout.warn {
+      background: var(--warm-soft);
+      border-color: rgba(180, 83, 9, 0.18);
+    }
+
+    .callout.danger {
+      background: var(--danger-soft);
+      border-color: rgba(154, 52, 18, 0.18);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.92rem;
+    }
+
+    .callout p {
+      margin: 0;
+      color: var(--ink);
+      font-size: 0.94rem;
+    }
+
+    .mini-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mini {
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .mini h4 {
+      margin: 0 0 10px;
+      font-size: 0.96rem;
+    }
+
+    .mini pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      background: rgba(31, 26, 23, 0.04);
+      font-size: 0.84rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .file {
+      display: inline-block;
+      padding: 3px 7px;
+      border-radius: 8px;
+      background: rgba(31, 26, 23, 0.06);
+      font-size: 0.85rem;
+      word-break: break-word;
+    }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .legend div {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--muted);
+      font-size: 0.93rem;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 980px) {
+      .page {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+      }
+
+      .hero-grid,
+      .grid-2,
+      .grid-3,
+      .mini-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <aside class="sidebar">
+      <h1>TW Architecture Guide</h1>
+      <p>A quick orientation for how the repo is wired and how a hook payload becomes an allow, ask, or deny decision.</p>
+      <nav class="toc">
+        <a href="#mental-model">Mental Model</a>
+        <a href="#repo-map">Repo Map</a>
+        <a href="#runtime-setup">Runtime Setup</a>
+        <a href="#hook-flow">Hook Ingress Flow</a>
+        <a href="#decision-pipeline">Decision Pipeline</a>
+        <a href="#state-sources">State and Data Sources</a>
+        <a href="#builtin-packs">Built-in Packs</a>
+        <a href="#start-here">Start Here in Code</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <section class="hero">
+        <div class="hero-top">
+          <div class="eyebrow">Training Wheels / Architecture</div>
+          <h2>Project setup and the hook evaluation path</h2>
+          <p>
+            Training Wheels is a Go CLI that sits in front of agent-issued shell commands. An agent calls the installed hook, the hook turns protocol-specific JSON into one shell command string, and the evaluator decides whether the command is safe to run, should be blocked, or should require confirmation.
+          </p>
+        </div>
+        <div class="hero-grid">
+          <div class="stat">
+            <strong>Primary binary</strong>
+            <span><code>cmd/tw</code> -> <code>internal/cli</code></span>
+          </div>
+          <div class="stat">
+            <strong>Main hook entry</strong>
+            <span><code>tw hook</code> reads JSON on stdin</span>
+          </div>
+          <div class="stat">
+            <strong>Core decision engine</strong>
+            <span><code>internal/eval.Evaluator</code></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="mental-model">
+        <h3>Mental Model</h3>
+        <p>
+          The easiest way to think about the project is as five layers. The CLI accepts commands, the hook layer understands agent payloads, the app layer assembles runtime dependencies, the evaluator runs the decision pipeline, and the pack/rule/override/session data determines the result.
+        </p>
+        <div class="grid-3">
+          <div class="card">
+            <h4>1. Interface layer</h4>
+            <p><span class="file">cmd/tw/main.go</span> and <span class="file">internal/cli</span> expose commands like <code>hook</code>, <code>test</code>, <code>explain</code>, <code>install</code>, and <code>rule</code>.</p>
+          </div>
+          <div class="card">
+            <h4>2. Hook protocol layer</h4>
+            <p><span class="file">internal/hook</span> normalizes Claude, Copilot, and Gemini hook payloads into one extracted command plus a detected protocol.</p>
+          </div>
+          <div class="card">
+            <h4>3. Runtime assembly</h4>
+            <p><span class="file">internal/app</span> loads config, packs, rules, overrides, and session state and builds an evaluator with the right shell context.</p>
+          </div>
+          <div class="card">
+            <h4>4. Evaluation engine</h4>
+            <p><span class="file">internal/eval</span>, <span class="file">internal/ast</span>, and <span class="file">internal/normalize</span> implement the decision pipeline and structural matching.</p>
+          </div>
+          <div class="card">
+            <h4>5. Policy data</h4>
+            <p>Built-in packs live under <span class="file">packs/json</span>. User and project policy comes from <code>~/.tw</code> and <code>.tw</code> files.</p>
+          </div>
+          <div class="card">
+            <h4>6. Install surface</h4>
+            <p><span class="file">internal/cli/install.go</span>, <span class="file">internal/agentsettings</span>, and <span class="file">internal/skills</span> wire TW into supported agent settings.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="repo-map">
+        <h3>Repo Map</h3>
+        <p>
+          These are the directories that matter most when you are tracing runtime behavior. Most other directories are tests, docs, release plumbing, or labs for experimentation.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Path</th>
+              <th>What it owns</th>
+              <th>Why it matters for hook flow</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="file">cmd/tw</span></td>
+              <td>The top-level executable.</td>
+              <td>The binary enters at <code>main()</code> and immediately hands control to the CLI package.</td>
+            </tr>
+            <tr>
+              <td><span class="file">internal/cli</span></td>
+              <td>Cobra commands, flags, install/uninstall, explain/test subcommands.</td>
+              <td><code>internal/cli/hook.go</code> is the concrete runtime path for agent hook execution.</td>
+            </tr>
+            <tr>
+              <td><span class="file">internal/hook</span></td>
+              <td>Protocol detection, command extraction, denial/ask JSON output.</td>
+              <td>This is the boundary between agent-specific payload formats and the evaluator.</td>
+            </tr>
+            <tr>
+              <td><span class="file">internal/app</span></td>
+              <td>Config load, registry initialization, evaluator construction.</td>
+              <td>It wires built-in packs, external packs, overrides, rules, and session state together.</td>
+            </tr>
+            <tr>
+              <td><span class="file">internal/eval</span></td>
+              <td>Decision ordering and post-match handling.</td>
+              <td>This is the actual policy engine.</td>
+            </tr>
+            <tr>
+              <td><span class="file">internal/ast</span></td>
+              <td>tree-sitter parse, unwrap, and command enrichment.</td>
+              <td>Structural pack matching depends on parsed <code>SimpleCommand</code> values, not raw regexes.</td>
+            </tr>
+            <tr>
+              <td><span class="file">internal/config</span></td>
+              <td>Default config plus user config and env layering.</td>
+              <td>Controls timeout, command size, enabled packs, default action, and external pack paths.</td>
+            </tr>
+            <tr>
+              <td><span class="file">internal/override</span>, <span class="file">internal/rules</span>, <span class="file">internal/session</span></td>
+              <td>User/project exceptions and temporary approvals.</td>
+              <td>These can allow or ask before pack evaluation, and can also override a destructive pack match after the fact.</td>
+            </tr>
+            <tr>
+              <td><span class="file">packs/json</span></td>
+              <td>Built-in policy data shipped with the binary.</td>
+              <td>Loaded into the default registry and turned into active packs for evaluation.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section" id="runtime-setup">
+        <h3>Runtime Setup</h3>
+        <p>
+          Before the hook can evaluate anything, TW has to be installed into an agent's settings and the binary has to know where to find its policy inputs.
+        </p>
+        <div class="grid-2">
+          <div class="card">
+            <h4>Install path</h4>
+            <p>
+              <code>tw install</code> copies the current binary to a stable path under <code>~/.tw/bin</code>, installs embedded skills, detects supported agent settings, and injects the hook reference there. That logic lives in <span class="file">internal/cli/install.go</span> and <span class="file">internal/agentsettings</span>.
+            </p>
+          </div>
+          <div class="card">
+            <h4>Registry setup</h4>
+            <p>
+              <span class="file">internal/app/runtime.go</span> calls <code>EnsureDefaultRegistry()</code>, which registers built-in packs from embedded JSON via <span class="file">internal/packs/allpacks/allpacks.go</span> and then loads any configured external pack files or directories.
+            </p>
+          </div>
+        </div>
+        <div class="chip-row">
+          <span class="chip">Built-in packs embedded from <code>packs/json/*.json</code></span>
+          <span class="chip">User config at <code>~/.tw/config.json</code></span>
+          <span class="chip">External pack roots: <code>~/.tw/packs</code> and <code>.tw/packs</code></span>
+          <span class="chip">User/project rules at <code>~/.tw/rules.json</code> and <code>.tw/rules.json</code></span>
+          <span class="chip">User/project overrides at <code>~/.tw/overrides.json</code> and <code>.tw/overrides.json</code></span>
+          <span class="chip">Session token and allowlist under <code>~/.tw/</code></span>
+        </div>
+        <div class="callout info">
+          <strong>Important setup detail</strong>
+          <p>
+            TW is intentionally fail-open on hook runtime problems. If config loading, hook input parsing, command extraction, or deadline budget handling fails inside <code>tw hook</code>, the command is allowed rather than blocked.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="hook-flow">
+        <h3>Hook Ingress Flow</h3>
+        <p>
+          This is the path from “the agent wants to run a command” to “the evaluator has one command string to inspect.”
+        </p>
+        <div class="flow">
+          <div class="step" data-step="1">
+            <h4>Agent calls the installed hook</h4>
+            <p>
+              The agent runtime invokes <code>tw hook</code> as a pre-execution hook and sends a JSON payload over stdin. Supported protocols are Claude, Copilot, and Gemini.
+            </p>
+          </div>
+          <div class="step" data-step="2">
+            <h4>CLI command dispatch enters <code>runHook</code></h4>
+            <p>
+              <span class="file">cmd/tw/main.go</span> calls <code>cli.Execute()</code>. Cobra resolves the <code>hook</code> subcommand and runs <code>runHook</code> in <span class="file">internal/cli/hook.go</span>.
+            </p>
+          </div>
+          <div class="step" data-step="3">
+            <h4>Config is loaded first</h4>
+            <p>
+              <code>app.LoadConfig()</code> resolves defaults, user config, and env overrides. This establishes limits like <code>hook_timeout_ms</code>, <code>max_command_bytes</code>, active packs, severity threshold, and default action.
+            </p>
+          </div>
+          <div class="step" data-step="4">
+            <h4>Hook payload is decoded</h4>
+            <p>
+              <code>hook.ReadHookInput()</code> reads bounded stdin bytes and unmarshals a union struct that accepts both snake_case and camelCase fields for protocol differences.
+            </p>
+          </div>
+          <div class="step" data-step="5">
+            <h4>Protocol and command are extracted</h4>
+            <p>
+              <code>hook.ExtractCommand()</code> detects which protocol sent the payload and extracts a shell command only for shell-like tools such as <code>bash</code>, <code>launch-process</code>, or <code>run_shell_command</code>. Non-shell tool calls short-circuit to allow.
+            </p>
+          </div>
+          <div class="step" data-step="6">
+            <h4>Shell context is inferred</h4>
+            <p>
+              <code>runHook</code> chooses a shell using the tool name first, then command-based detection, then a default shell. That shell choice controls whether AST parsing is enabled and which grammar to use.
+            </p>
+          </div>
+          <div class="step" data-step="7">
+            <h4>Evaluator is built with optional state</h4>
+            <p>
+              <code>app.NewEvaluator()</code> loads overrides, custom rules, and session state on top of the enabled pack set. It also attaches the selected shell and timeout context.
+            </p>
+          </div>
+          <div class="step" data-step="8">
+            <h4>The evaluator receives exactly one command string</h4>
+            <p>
+              From this point forward the pipeline operates on the original command plus a pre-parse-cleaned version. The result comes back as <code>allow</code>, <code>deny</code>, or <code>ask</code> along with metadata about the source of the match.
+            </p>
+          </div>
+          <div class="step" data-step="9">
+            <h4>Hook output is written in the originating protocol</h4>
+            <p>
+              <code>internal/hook/output.go</code> formats protocol-specific JSON. Claude gets <code>hookSpecificOutput</code>, Copilot gets <code>continue: false</code>, and Gemini gets a <code>decision</code> field. Exit code handling also differs slightly by protocol.
+            </p>
+          </div>
+        </div>
+
+        <div class="mini-grid" style="margin-top: 20px;">
+          <div class="mini">
+            <h4>Claude-style payload</h4>
+            <pre>{
+"tool_name": "Bash",
+"tool_input": {
+  "command": "git reset --hard"
+}
+}</pre>
+          </div>
+          <div class="mini">
+            <h4>Copilot-style payload</h4>
+            <pre>{
+"toolName": "launch-process",
+"toolArgs": {
+  "command": "rm -rf /"
+}
+}</pre>
+          </div>
+          <div class="mini">
+            <h4>Gemini-style shape</h4>
+            <pre>{
+"event": "BeforeTool",
+"session_id": "...",
+"tool_name": "run_shell_command",
+"tool_args": {
+  "command": "git status"
+}
+}</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="decision-pipeline">
+        <h3>Decision Pipeline</h3>
+        <p>
+          The evaluator is the heart of the system. The code in <span class="file">internal/eval/evaluator.go</span> is sequential on purpose: it performs cheap allow/ask checks first, prunes irrelevant packs, then spends the parse budget only where it is needed.
+        </p>
+        <div class="flow">
+          <div class="step" data-step="0">
+            <h4>Empty command check</h4>
+            <p>Blank or whitespace-only commands immediately return <code>allow</code>.</p>
+          </div>
+          <div class="step" data-step="0.5">
+            <h4>Pre-parse cleanup</h4>
+            <p>
+              <span class="file">internal/normalize/normalize.go</span> strips carriage returns, collapses line continuations, and normalizes Windows absolute path backslashes so parsing behaves consistently.
+            </p>
+          </div>
+          <div class="step" data-step="1">
+            <h4>Pre-pack custom rule allows</h4>
+            <p>
+              <code>allow</code> rules are checked before pack evaluation. Command-kind allow rules can parse the command structurally and bypass all later pack checks.
+            </p>
+          </div>
+          <div class="step" data-step="2">
+            <h4>Pre-pack override ask</h4>
+            <p>
+              Session/time-scoped overrides from user or project state can require confirmation before any pack logic runs.
+            </p>
+          </div>
+          <div class="step" data-step="3">
+            <h4>Pre-pack override allow</h4>
+            <p>
+              Exact, prefix, or rule-targeted overrides can allow the command early.
+            </p>
+          </div>
+          <div class="step" data-step="3.5">
+            <h4>Pre-pack session allow or ask</h4>
+            <p>
+              HMAC-protected session entries are checked next. These are ephemeral approvals stored under <code>~/.tw/</code>.
+            </p>
+          </div>
+          <div class="step" data-step="4">
+            <h4>Quick-reject keyword scan</h4>
+            <p>
+              <span class="file">internal/eval/quick_reject.go</span> uses Aho-Corasick over enabled pack keywords. If no relevant keywords match, the evaluator returns <code>allow</code> without doing AST work.
+            </p>
+          </div>
+          <div class="step" data-step="4.5">
+            <h4>AST parse and command enrichment</h4>
+            <p>
+              If AST mode is enabled for the current shell, TW parses with tree-sitter, unwraps wrappers, collects simple commands, and enriches CLI subcommands for tools like <code>git</code>, <code>docker</code>, and <code>kubectl</code>.
+            </p>
+          </div>
+          <div class="step" data-step="7">
+            <h4>Deadline budget check</h4>
+            <p>
+              The evaluator respects the hook timeout context. If the budget is exhausted, it returns <code>allow</code> with <code>SkippedDueToBudget=true</code>.
+            </p>
+          </div>
+          <div class="step" data-step="8">
+            <h4>Structural pack evaluation</h4>
+            <p>
+              Only candidate packs are scanned. A pack matches by checking parsed <code>SimpleCommand</code> values against structural <code>when</code>/<code>unless</code> patterns, not raw shell text.
+            </p>
+          </div>
+          <div class="step" data-step="8b">
+            <h4>Post-match exception handling</h4>
+            <p>
+              Once a pack finds a destructive match, TW runs a second round of checks: allow rules by rule ID, override ask, override allow, and session allow/ask. This is where “allow this exact matched rule” works.
+            </p>
+          </div>
+          <div class="step" data-step="9">
+            <h4>Final decision</h4>
+            <p>
+              If nothing overrides the match, the pack action wins: usually <code>deny</code>, sometimes <code>ask</code>. If no pack matches, the result is <code>allow</code>. Back in <code>runHook</code>, a pack denial can be upgraded to <code>ask</code> when config <code>packs.default_action</code> is <code>ask</code>.
+            </p>
+          </div>
+        </div>
+
+        <div class="legend">
+          <div><code>allow</code>: command runs silently or with a logged allow source such as a custom rule, override, or session entry.</div>
+          <div><code>ask</code>: hook returns structured output telling the agent the command needs review/confirmation.</div>
+          <div><code>deny</code>: hook returns a blocking payload containing reason, rule ID, pack ID, and severity when available.</div>
+        </div>
+
+        <div class="callout warn">
+          <strong>Why the AST matters</strong>
+          <p>
+            The evaluator is designed to understand command structure rather than just scanning text. That is why destructive strings inside data positions, such as a commit message, can remain allowed while real command invocations are blocked.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="state-sources">
+        <h3>State and Data Sources</h3>
+        <p>
+          The decision result is a merge of shipped policy and local state. If you are trying to explain a surprising allow or deny, these are the files to inspect first.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Location</th>
+              <th>Effect on evaluation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Built-in packs</td>
+              <td><span class="file">packs/json/*.json</span></td>
+              <td>Define the baseline destructive command patterns and their keywords.</td>
+            </tr>
+            <tr>
+              <td>External packs</td>
+              <td><span class="file">~/.tw/packs</span>, <span class="file">.tw/packs</span>, plus configured paths</td>
+              <td>Add more packs to the registry at startup.</td>
+            </tr>
+            <tr>
+              <td>Config</td>
+              <td><span class="file">~/.tw/config.json</span> plus env vars</td>
+              <td>Controls time budget, max input size, pack enablement, severity threshold, and default action.</td>
+            </tr>
+            <tr>
+              <td>Persistent rules</td>
+              <td><span class="file">~/.tw/rules.json</span>, <span class="file">.tw/rules.json</span></td>
+              <td>Allow rules are checked directly; deny and ask rules are converted into a synthetic pack named <code>rules.custom</code>.</td>
+            </tr>
+            <tr>
+              <td>Overrides</td>
+              <td><span class="file">~/.tw/overrides.json</span>, <span class="file">.tw/overrides.json</span></td>
+              <td>Provide exact, prefix, or rule-based ask/allow entries with project precedence over user scope.</td>
+            </tr>
+            <tr>
+              <td>Session allowlist</td>
+              <td><span class="file">~/.tw/session-token</span>, <span class="file">~/.tw/allow.key</span>, <span class="file">~/.tw/allow-&lt;token-prefix&gt;.json</span></td>
+              <td>Provides ephemeral allow or ask entries that are signed to prevent tampering.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout danger">
+          <strong>Subtle but important ordering rule</strong>
+          <p>
+            Custom <code>allow</code> rules are not converted into pack denies. They are checked both before pack evaluation and after a pack match. Custom <code>deny</code> and <code>ask</code> rules, by contrast, are converted into a synthetic pack so they participate in normal structural matching.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="builtin-packs">
+        <h3>Built-in Packs</h3>
+        <p>
+          The binary ships 110 built-in packs from <span class="file">packs/json/*.json</span>. Those are the full policy catalog available to the registry, even though only a smaller subset is enabled by default in config.
+        </p>
+
+        <div class="callout info">
+          <strong>Default vs shipped</strong>
+          <p>
+            By default, TW enables the core protection packs <code>core.git</code>, <code>core.filesystem</code>, and <code>core.tw</code>, plus <code>windows</code> on Windows. The rest of the built-in packs are still shipped and can be enabled through config or pack selection.
+          </p>
+        </div>
+
+        <div class="callout info">
+          <strong>Full catalog</strong>
+          <p>
+            For the complete built-in pack list, including the extracted top-level commands and subcommands each pack matches, see <a href="./builtin-pack-catalog.html">builtin-pack-catalog.html</a>.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="start-here">
+        <h3>Start Here in Code</h3>
+        <p>
+          If you want to keep tracing this manually, this order gives the shortest path through the runtime.
+        </p>
+        <div class="flow">
+          <div class="step" data-step="A">
+            <h4><span class="file">cmd/tw/main.go</span></h4>
+            <p>Confirms the entire binary is just CLI dispatch plus exit code handling.</p>
+          </div>
+          <div class="step" data-step="B">
+            <h4><span class="file">internal/cli/hook.go</span></h4>
+            <p>Best single file for the top-level hook lifecycle: config, input, extraction, evaluator construction, and protocol-specific output.</p>
+          </div>
+          <div class="step" data-step="C">
+            <h4><span class="file">internal/hook/input.go</span> and <span class="file">internal/hook/output.go</span></h4>
+            <p>Use these to understand payload shapes, protocol detection, and emitted deny/ask JSON.</p>
+          </div>
+          <div class="step" data-step="D">
+            <h4><span class="file">internal/app/runtime.go</span></h4>
+            <p>This is the assembly layer that turns config and local state into a ready evaluator.</p>
+          </div>
+          <div class="step" data-step="E">
+            <h4><span class="file">internal/eval/evaluator.go</span> and <span class="file">internal/eval/quick_reject.go</span></h4>
+            <p>Read these for the authoritative decision ordering and the cheap prefilter that keeps the hook fast.</p>
+          </div>
+          <div class="step" data-step="F">
+            <h4><span class="file">internal/ast</span> and <span class="file">packs/json</span></h4>
+            <p>These explain what “structural matching” really means and what patterns are actually shipped.</p>
+          </div>
+        </div>
+
+        <div class="callout info">
+          <strong>Fastest debugging command</strong>
+          <p>
+            Run <code>tw explain "your command here"</code> to see the traced evaluation steps, the normalized command, the matched pack or rule, and the final decision without going through a real agent hook invocation.
+          </p>
+        </div>
+
+        <p class="footer-note">
+          This document was built from the current code paths in <code>cmd/tw</code>, <code>internal/cli</code>, <code>internal/hook</code>, <code>internal/app</code>, <code>internal/eval</code>, <code>internal/ast</code>, <code>internal/config</code>, <code>internal/rules</code>, <code>internal/override</code>, and <code>internal/session</code>.
+        </p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

@@ -2,13 +2,17 @@ package eval
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"time"
 
+	"github.com/thgrace/training-wheels/internal/ast"
 	"github.com/thgrace/training-wheels/internal/config"
+	"github.com/thgrace/training-wheels/internal/logger"
 	"github.com/thgrace/training-wheels/internal/normalize"
 	"github.com/thgrace/training-wheels/internal/override"
 	"github.com/thgrace/training-wheels/internal/packs"
+	"github.com/thgrace/training-wheels/internal/rules"
 	"github.com/thgrace/training-wheels/internal/session"
 	shellcontext "github.com/thgrace/training-wheels/internal/shellcontext"
 )
@@ -44,7 +48,12 @@ type MatchSource int
 const (
 	SourcePack          MatchSource = iota
 	SourceOverrideDeny              // matched an override deny entry
+	SourceOverrideAsk               // matched an override ask entry
+	SourceOverrideAllow             // matched an override allow entry
 	SourceSessionAllow              // matched a session allow entry
+	SourceRuleAllow                 // matched a custom rule allow entry
+	SourceRuleDeny                  // matched a custom rule deny entry
+	SourceRuleAsk                   // matched a custom rule ask entry
 )
 
 // MatchSpan is a byte-offset range within the evaluated command string.
@@ -70,8 +79,9 @@ type PatternMatch struct {
 type EvaluationResult struct {
 	Decision           EvaluationDecision
 	PatternInfo        *PatternMatch
-	OverrideEntry      *override.Entry // Set if an override entry affected the decision
-	SessionEntry       *session.Entry  // Set if a session allow entry affected the decision
+	OverrideEntry      *override.Entry   // Set if an override entry affected the decision
+	SessionEntry       *session.Entry    // Set if a session allow entry affected the decision
+	RuleEntry          *rules.AllowEntry // Set if a custom rule affected the decision
 	SkippedDueToBudget bool
 	Command            string
 	NormalizedCommand  string
@@ -79,34 +89,61 @@ type EvaluationResult struct {
 
 // Evaluator holds the pre-built state for command evaluation.
 type Evaluator struct {
-	cfg              *config.Config
-	registry         *packs.PackRegistry
-	packs            []*packs.Pack
-	packIDs          []string
-	kwIndex          *EnabledKeywordIndex
-	userOverrides    *override.Overrides
-	projectOverrides *override.Overrides
-	shell            shellcontext.Shell
-	trace            TraceCollector
-	sessionAllows    *session.Allowlist
-	minSeverity      packs.Severity
+	cfg                  *config.Config
+	registry             *packs.PackRegistry
+	basePacks            []*packs.Pack
+	basePackIDs          []string
+	packs                []*packs.Pack
+	packIDs              []string
+	kwIndex              *EnabledKeywordIndex
+	userOverrides        *override.Overrides
+	projectOverrides     *override.Overrides
+	shell                shellcontext.Shell
+	trace                TraceCollector
+	sessionAllows        *session.Allowlist
+	minSeverity          packs.Severity
+	ruleAllows           []rules.AllowEntry // custom allow rules (pre-pack + post-pack by rule-ID)
+	hasCommandAllowRules bool               // true when any allow rule requires parsed commands
+	astEnabled           bool               // true when AST parsing is available for this shell
 }
 
 // NewEvaluator creates an Evaluator from a config and registry.
 func NewEvaluator(cfg *config.Config, registry *packs.PackRegistry) *Evaluator {
+	// 1. Mandatory packs: ensure core security and self-protection are ALWAYS enabled.
+	mandatory := []string{"core.git", "core.filesystem", "core.tw"}
+	if runtime.GOOS == "windows" {
+		mandatory = append(mandatory, "windows")
+	}
+
+	enabled := make([]string, 0, len(cfg.Packs.Enabled)+len(mandatory))
+	enabled = append(enabled, cfg.Packs.Enabled...)
+	enabled = append(enabled, mandatory...)
+
 	// Resolve active pack IDs (expanded enabled minus disabled).
-	activeIDs, _ := registry.ResolveEnabledSet(cfg.Packs.Enabled, cfg.Packs.Disabled)
+	activeIDs, _ := registry.ResolveEnabledSet(enabled, cfg.Packs.Disabled)
 
 	// Build active pack list.
 	var activePacks []*packs.Pack
 	var resolvedIDs []string
 	var kwEntries []PackKeywords
 
+	mandatoryMap := make(map[string]bool)
+	for _, id := range mandatory {
+		mandatoryMap[id] = true
+	}
+
 	for _, id := range activeIDs {
 		p := registry.Get(id)
 		if p == nil {
 			continue
 		}
+
+		// Warning: non-mandatory packs with zero keywords will be checked
+		// on every command, which can impact performance.
+		if len(p.Keywords) == 0 && !mandatoryMap[id] {
+			logger.Warn("pack has no keywords; it will be evaluated for every command", "pack", id)
+		}
+
 		idx := len(activePacks)
 		activePacks = append(activePacks, p)
 		resolvedIDs = append(resolvedIDs, id)
@@ -121,14 +158,20 @@ func NewEvaluator(cfg *config.Config, registry *packs.PackRegistry) *Evaluator {
 		minSev = parsed
 	}
 
+	defShell := shellcontext.DefaultShell()
+	basePacks := append([]*packs.Pack(nil), activePacks...)
+	basePackIDs := append([]string(nil), resolvedIDs...)
 	return &Evaluator{
 		cfg:         cfg,
 		registry:    registry,
-		packs:       activePacks,
-		packIDs:     resolvedIDs,
+		basePacks:   basePacks,
+		basePackIDs: basePackIDs,
+		packs:       append([]*packs.Pack(nil), basePacks...),
+		packIDs:     append([]string(nil), basePackIDs...),
 		kwIndex:     NewEnabledKeywordIndex(kwEntries),
-		shell:       shellcontext.DefaultShell(),
+		shell:       defShell,
 		minSeverity: minSev,
+		astEnabled:  defShell.Name() == "posix" || defShell.Name() == "powershell",
 	}
 }
 
@@ -138,10 +181,26 @@ func (e *Evaluator) SetTrace(t TraceCollector) {
 }
 
 // SetShell sets the shell context for evaluation (affects sanitization).
+// Also enables AST parsing for POSIX shells (Bash/Zsh).
 func (e *Evaluator) SetShell(s shellcontext.Shell) {
 	if s != nil {
 		e.shell = s
+		// Enable AST for POSIX shells; CmdExe has no tree-sitter grammar.
+		e.astEnabled = s.Name() == "posix" || s.Name() == "powershell"
 	}
+}
+
+// ASTEnabled reports whether AST-based parsing is active for the current shell.
+func (e *Evaluator) ASTEnabled() bool {
+	return e.astEnabled
+}
+
+// getASTShellType returns the AST shell type for the current shell.
+func (e *Evaluator) getASTShellType() ast.ShellType {
+	if e.shell != nil && e.shell.Name() == "powershell" {
+		return ast.ShellPowerShell
+	}
+	return ast.ShellBash
 }
 
 // SetOverrides sets the user and project overrides for the evaluator.
@@ -155,9 +214,54 @@ func (e *Evaluator) SetSessionAllows(sa *session.Allowlist) {
 	e.sessionAllows = sa
 }
 
-// checkOverrideDeny checks if a command should be denied by an override entry.
-func (e *Evaluator) checkOverrideDeny(command, ruleID string) *override.Entry {
-	return override.CheckDeny(command, ruleID, e.userOverrides, e.projectOverrides)
+// SetRules integrates custom user and project rules into the evaluator.
+// Deny/ask rules become a synthetic pack registered and enabled.
+// Allow rules are stored for pre-pack and post-pack checking.
+func (e *Evaluator) SetRules(user, project *rules.RulesFile) {
+	e.resetRuleState()
+
+	var allEntries []rules.RuleEntry
+	if project != nil {
+		allEntries = append(allEntries, project.List()...)
+	}
+	if user != nil {
+		allEntries = append(allEntries, user.List()...)
+	}
+
+	if len(allEntries) == 0 {
+		return
+	}
+
+	// Build synthetic pack from deny/ask entries.
+	synPack := rules.ConvertToPack(allEntries, "rules.custom")
+	if len(synPack.StructuralPatterns) > 0 {
+		_ = e.registry.RegisterPack(synPack, "rules")
+		// Add to our active packs and rebuild keyword index.
+		e.packs = append(e.packs, synPack)
+		e.packIDs = append(e.packIDs, synPack.ID)
+		var kwEntries []PackKeywords
+		for i, p := range e.packs {
+			kwEntries = append(kwEntries, PackKeywords{
+				PackIndex: i,
+				Keywords:  p.Keywords,
+			})
+		}
+		e.kwIndex = NewEnabledKeywordIndex(kwEntries)
+	}
+
+	// Extract allow entries for pre-pack and post-pack checking.
+	e.ruleAllows = rules.ConvertToAllowEntries(allEntries, e.getASTShellType())
+	e.hasCommandAllowRules = rules.HasCommandAllowEntries(e.ruleAllows)
+}
+
+// checkRuleAllow checks if a command or ruleID matches any custom rule allow entry.
+func (e *Evaluator) checkRuleAllow(command, ruleID string, simpleCommands []ast.SimpleCommand) *rules.AllowEntry {
+	return rules.CheckAllowParsed(command, ruleID, simpleCommands, e.ruleAllows)
+}
+
+// checkOverrideAsk checks if a command should require confirmation by an override entry.
+func (e *Evaluator) checkOverrideAsk(command, ruleID string) *override.Entry {
+	return override.CheckAsk(command, ruleID, e.userOverrides, e.projectOverrides)
 }
 
 // checkOverrideAllow checks if a denial should be overridden by an allow entry.
@@ -171,12 +275,12 @@ func (e *Evaluator) severityEnforced(s packs.Severity) bool {
 	return s <= e.minSeverity
 }
 
-// checkSessionAllow checks if a command is allowed by a session allow entry.
-func (e *Evaluator) checkSessionAllow(command, ruleID string) *session.Entry {
+// checkSessionMatch checks if a command is allowed or asked by a session entry.
+func (e *Evaluator) checkSessionMatch(command, ruleID string) *session.Entry {
 	if e.sessionAllows == nil {
 		return nil
 	}
-	return e.sessionAllows.MatchesAllow(command, ruleID)
+	return e.sessionAllows.Matches(command, ruleID)
 }
 
 // Evaluate runs the full evaluation pipeline for cmd.
@@ -195,95 +299,132 @@ func (e *Evaluator) Evaluate(ctx context.Context, cmd string) *EvaluationResult 
 		return result
 	}
 
-	// Step 0.5 — Pre-normalize.
-	preNorm := normalize.PreNormalize(cmd)
+	// Step 0.5 — Pre-parse cleanup (CR stripping + Windows backslash normalization).
+	cleaned := normalize.PreParseCleanup(cmd)
 	if e.trace != nil {
-		e.trace.RecordPreNormalize(cmd, preNorm)
+		e.trace.RecordPreNormalize(cmd, cleaned)
 	}
 
-	// Step 1 — Override deny entries.
-	if blockEntry := e.checkOverrideDeny(cmd, ""); blockEntry != nil {
+	var (
+		simpleCommands []ast.SimpleCommand
+		parsedCommands bool
+	)
+	parseSimpleCommands := func() []ast.SimpleCommand {
+		if parsedCommands {
+			return simpleCommands
+		}
+		parsedCommands = true
+		cc := ast.ParseShell([]byte(cleaned), e.getASTShellType())
+		if cc == nil {
+			return nil
+		}
+		cc = ast.Unwrap(cc, e.getASTShellType())
+		simpleCommands = cc.AllCommands()
+		ast.EnrichCommands(simpleCommands)
+		return simpleCommands
+	}
+	var ruleCommands []ast.SimpleCommand
+	if e.hasCommandAllowRules {
+		ruleCommands = parseSimpleCommands()
+	}
+
+	// Step 1 — Rule allow entries (pre-pack, command match only).
+	if ra := e.checkRuleAllow(cmd, "", ruleCommands); ra != nil {
 		if e.trace != nil {
-			e.trace.RecordOverrideCheck("project/user", blockEntry, false)
-			e.trace.RecordFinalDecision(DecisionDeny, time.Since(start))
+			e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
 		}
-		return &EvaluationResult{
-			Decision: DecisionDeny,
-			Command:  cmd,
-			PatternInfo: &PatternMatch{
-				Reason: "command matches override deny: " + blockEntry.Value,
-				Source: SourceOverrideDeny,
-			},
-			OverrideEntry: blockEntry,
-		}
+		return &EvaluationResult{Decision: DecisionAllow, Command: cmd, RuleEntry: ra}
 	}
-	// Also check pre-normalized form.
-	if preNorm != cmd {
-		if blockEntry := e.checkOverrideDeny(preNorm, ""); blockEntry != nil {
+	if cleaned != cmd {
+		if ra := e.checkRuleAllow(cleaned, "", ruleCommands); ra != nil {
 			if e.trace != nil {
-				e.trace.RecordOverrideCheck("project/user (pre-normalized)", blockEntry, false)
-				e.trace.RecordFinalDecision(DecisionDeny, time.Since(start))
+				e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
 			}
-			return &EvaluationResult{
-				Decision: DecisionDeny,
-				Command:  cmd,
-				PatternInfo: &PatternMatch{
-					Reason: "command matches override deny: " + blockEntry.Value,
-					Source: SourceOverrideDeny,
-				},
-				OverrideEntry: blockEntry,
-			}
+			return &EvaluationResult{Decision: DecisionAllow, Command: cmd, RuleEntry: ra}
 		}
 	}
 
-	// Step 2 — Override allow entries.
+	// Step 2 — Override ask entries (session/time only).
+	if askEntry := e.checkOverrideAsk(cmd, ""); askEntry != nil {
+		if e.trace != nil {
+			e.trace.RecordOverrideCheck("project/user", askEntry)
+			e.trace.RecordFinalDecision(DecisionAsk, time.Since(start))
+		}
+		return newOverrideDecisionResult(DecisionAsk, cmd, cleaned, askEntry, SourceOverrideAsk, nil)
+	}
+	if cleaned != cmd {
+		if askEntry := e.checkOverrideAsk(cleaned, ""); askEntry != nil {
+			if e.trace != nil {
+				e.trace.RecordOverrideCheck("project/user (cleaned)", askEntry)
+				e.trace.RecordFinalDecision(DecisionAsk, time.Since(start))
+			}
+			return newOverrideDecisionResult(DecisionAsk, cmd, cleaned, askEntry, SourceOverrideAsk, nil)
+		}
+	}
+
+	// Step 3.2 — Override allow entries.
 	if allowEntry := e.checkOverrideAllow(cmd, ""); allowEntry != nil {
 		if e.trace != nil {
-			e.trace.RecordOverrideCheck("project/user", allowEntry, true)
+			e.trace.RecordOverrideCheck("project/user", allowEntry)
 			e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
 		}
-		result.OverrideEntry = allowEntry
-		return result
+		return newOverrideDecisionResult(DecisionAllow, cmd, cleaned, allowEntry, SourceOverrideAllow, nil)
 	}
-	if preNorm != cmd {
-		if allowEntry := e.checkOverrideAllow(preNorm, ""); allowEntry != nil {
+	if cleaned != cmd {
+		if allowEntry := e.checkOverrideAllow(cleaned, ""); allowEntry != nil {
 			if e.trace != nil {
-				e.trace.RecordOverrideCheck("project/user (pre-normalized)", allowEntry, true)
+				e.trace.RecordOverrideCheck("project/user (cleaned)", allowEntry)
 				e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
 			}
-			result.OverrideEntry = allowEntry
-			return result
+			return newOverrideDecisionResult(DecisionAllow, cmd, cleaned, allowEntry, SourceOverrideAllow, nil)
 		}
 	}
 
-	// Step 2.5 — Session allow entries (pre-pack).
-	if entry := e.checkSessionAllow(cmd, ""); entry != nil {
+	// Step 3.5 — Session entries (pre-pack).
+	if entry := e.checkSessionMatch(cmd, ""); entry != nil {
+		decision := DecisionAllow
+		if entry.Action == "ask" {
+			decision = DecisionAsk
+		}
 		if e.trace != nil {
-			e.trace.RecordSessionAllowCheck("pre-pack", entry, true)
-			e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
+			e.trace.RecordSessionAllowCheck("pre-pack", entry, decision == DecisionAllow)
+			e.trace.RecordFinalDecision(decision, time.Since(start))
+		}
+		if decision == DecisionAsk {
+			return newSessionDecisionResult(decision, cmd, cleaned, entry, nil)
 		}
 		return &EvaluationResult{
-			Decision:     DecisionAllow,
-			Command:      cmd,
-			SessionEntry: entry,
+			Decision:          decision,
+			Command:           cmd,
+			NormalizedCommand: cleaned,
+			SessionEntry:      entry,
 		}
 	}
-	if preNorm != cmd {
-		if entry := e.checkSessionAllow(preNorm, ""); entry != nil {
+	if cleaned != cmd {
+		if entry := e.checkSessionMatch(cleaned, ""); entry != nil {
+			decision := DecisionAllow
+			if entry.Action == "ask" {
+				decision = DecisionAsk
+			}
 			if e.trace != nil {
-				e.trace.RecordSessionAllowCheck("pre-pack (pre-normalized)", entry, true)
-				e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
+				e.trace.RecordSessionAllowCheck("pre-pack (cleaned)", entry, decision == DecisionAllow)
+				e.trace.RecordFinalDecision(decision, time.Since(start))
+			}
+			if decision == DecisionAsk {
+				return newSessionDecisionResult(decision, cmd, cleaned, entry, nil)
 			}
 			return &EvaluationResult{
-				Decision:     DecisionAllow,
-				Command:      cmd,
-				SessionEntry: entry,
+				Decision:          decision,
+				Command:           cmd,
+				NormalizedCommand: cleaned,
+				SessionEntry:      entry,
 			}
 		}
 	}
 
-	// Step 3 — Quick-reject on pre-normalized command.
-	rejected, candidateMask := e.kwIndex.QuickReject(preNorm)
+
+	// Step 4 — Quick-reject on cleaned command.
+	rejected, candidateMask := e.kwIndex.QuickReject(cleaned)
 	if e.trace != nil {
 		var candidateIDs []string
 		for i := range e.packs {
@@ -291,7 +432,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, cmd string) *EvaluationResult 
 				candidateIDs = append(candidateIDs, e.packs[i].ID)
 			}
 		}
-		e.trace.RecordQuickReject(preNorm, candidateIDs)
+		e.trace.RecordQuickReject(cleaned, candidateIDs)
 	}
 	if rejected {
 		if e.trace != nil {
@@ -300,42 +441,14 @@ func (e *Evaluator) Evaluate(ctx context.Context, cmd string) *EvaluationResult 
 		return result
 	}
 
-	// Step 4 — Sanitize the pre-normalized command.
-	sanitizedCmd := shellcontext.Sanitize(preNorm, e.shell)
-	if e.trace != nil {
-		e.trace.RecordSanitization(preNorm, sanitizedCmd)
+	// Step 4.5 — Parse command through AST for structural matching.
+	if e.astEnabled {
+		simpleCommands = parseSimpleCommands()
 	}
 
-	// If sanitization removed all keywords, re-check quick-reject.
-	if sanitizedCmd != preNorm {
-		rejectedSan, maskSan := e.kwIndex.QuickReject(sanitizedCmd)
-		if rejectedSan {
-			if e.trace != nil {
-				e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
-			}
-			return result
-		}
-		// Merge candidate masks.
-		candidateMask[0] |= maskSan[0]
-		candidateMask[1] |= maskSan[1]
-	}
+	result.NormalizedCommand = cleaned
 
-	// Step 5 — Full normalize.
-	normalizedCmd := normalize.NormalizeCommand(sanitizedCmd)
-	result.NormalizedCommand = normalizedCmd
-	if e.trace != nil {
-		e.trace.RecordNormalization(sanitizedCmd, normalizedCmd)
-	}
-
-	if normalizedCmd != sanitizedCmd {
-		rejected2, mask2 := e.kwIndex.QuickReject(normalizedCmd)
-		if !rejected2 {
-			candidateMask[0] |= mask2[0]
-			candidateMask[1] |= mask2[1]
-		}
-	}
-
-	// Step 6 — Deadline check.
+	// Step 7 — Deadline check.
 	select {
 	case <-ctx.Done():
 		if e.trace != nil {
@@ -345,35 +458,25 @@ func (e *Evaluator) Evaluate(ctx context.Context, cmd string) *EvaluationResult 
 			Decision:           DecisionAllow,
 			SkippedDueToBudget: true,
 			Command:            cmd,
-			NormalizedCommand:  normalizedCmd,
+			NormalizedCommand:  cleaned,
 		}
 	default:
 	}
 
-	// Step 7 — Pack evaluation.
-	evalCmd := sanitizedCmd
-
-	// Pass 1: Safe patterns.
-	safeMatched := make([]bool, len(e.packs))
+	// Step 8 — Pack evaluation (v2 structural matching only).
 	for i, p := range e.packs {
-		isCandidate := isBitSet(candidateMask, i)
-		if !isCandidate {
+		if !isBitSet(candidateMask, i) {
 			if e.trace != nil {
 				e.trace.RecordPackEvaluation(p.ID, true, false, nil)
 			}
 			continue
 		}
-		if p.MatchesSafe(evalCmd) || (normalizedCmd != evalCmd && p.MatchesSafe(normalizedCmd)) {
-			safeMatched[i] = true
-			if e.trace != nil {
-				e.trace.RecordPackEvaluation(p.ID, false, true, nil)
-			}
-		}
-	}
 
-	// Pass 2: Destructive patterns.
-	for i, p := range e.packs {
-		if !isBitSet(candidateMask, i) || safeMatched[i] {
+		// Skip packs with no structural patterns or no parsed commands.
+		if len(p.StructuralPatterns) == 0 || len(simpleCommands) == 0 {
+			if e.trace != nil {
+				e.trace.RecordPackEvaluation(p.ID, false, false, nil)
+			}
 			continue
 		}
 
@@ -387,13 +490,13 @@ func (e *Evaluator) Evaluate(ctx context.Context, cmd string) *EvaluationResult 
 				Decision:           DecisionAllow,
 				SkippedDueToBudget: true,
 				Command:            cmd,
-				NormalizedCommand:  normalizedCmd,
+				NormalizedCommand:  cleaned,
 			}
 		default:
 		}
 
-		// Try sanitized command.
-		if dm := p.MatchesDestructive(evalCmd); dm != nil {
+		// Structural matching on parsed AST commands.
+		if dm := p.CheckStructural(simpleCommands); dm != nil {
 			if !e.severityEnforced(dm.Severity) {
 				if e.trace != nil {
 					e.trace.RecordPackEvaluation(p.ID, false, false, nil)
@@ -410,118 +513,55 @@ func (e *Evaluator) Evaluate(ctx context.Context, cmd string) *EvaluationResult 
 				Explanation: dm.Explanation,
 				Suggestions: dm.Suggestions,
 				Source:      SourcePack,
-				MatchedSpan: &MatchSpan{Start: dm.MatchStart, End: dm.MatchEnd},
 			}
 			if e.trace != nil {
 				e.trace.RecordPackEvaluation(p.ID, false, false, match)
 			}
-
-			// Check override allow before denying.
-			if ovEntry := e.checkOverrideAllow(cmd, ruleID); ovEntry != nil {
-				if e.trace != nil {
-					e.trace.RecordOverrideCheck("allow-after-match", ovEntry, true)
-					e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
-				}
-				return &EvaluationResult{
-					Decision:          DecisionAllow,
-					Command:           cmd,
-					OverrideEntry:     ovEntry,
-					NormalizedCommand: normalizedCmd,
-				}
+			if result := e.postPackChecks(ctx, cmd, cleaned, ruleID, simpleCommands, match, dm, start); result != nil {
+				return result
 			}
-			// Check session allow before denying.
-			if saEntry := e.checkSessionAllow(cmd, ruleID); saEntry != nil {
-				if e.trace != nil {
-					e.trace.RecordSessionAllowCheck("post-match", saEntry, true)
-					e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
-				}
-				return &EvaluationResult{
-					Decision:          DecisionAllow,
-					Command:           cmd,
-					SessionEntry:      saEntry,
-					NormalizedCommand: normalizedCmd,
-				}
-			}
-			if e.trace != nil {
-				e.trace.RecordFinalDecision(DecisionDeny, time.Since(start))
-			}
-			return &EvaluationResult{
-				Decision:          DecisionDeny,
-				Command:           cmd,
-				PatternInfo:       match,
-				NormalizedCommand: normalizedCmd,
-			}
-		}
-
-		// Try normalized command.
-		if normalizedCmd != evalCmd {
-			if dm := p.MatchesDestructive(normalizedCmd); dm != nil {
-				if !e.severityEnforced(dm.Severity) {
-					continue
-				}
-				ruleID := p.ID + ":" + dm.Name
-				match := &PatternMatch{
-					PackID:      p.ID,
-					PatternName: dm.Name,
-					RuleID:      ruleID,
-					Severity:    dm.Severity.String(),
-					Reason:      dm.Reason,
-					Explanation: dm.Explanation,
-					Suggestions: dm.Suggestions,
-					Source:      SourcePack,
-					MatchedSpan: &MatchSpan{Start: dm.MatchStart, End: dm.MatchEnd},
-				}
-				if e.trace != nil {
-					e.trace.RecordPackEvaluation(p.ID, false, false, match)
-				}
-
-				if ovEntry := e.checkOverrideAllow(cmd, ruleID); ovEntry != nil {
-					if e.trace != nil {
-						e.trace.RecordOverrideCheck("allow-after-match", ovEntry, true)
-						e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
-					}
-					return &EvaluationResult{
-						Decision:          DecisionAllow,
-						Command:           cmd,
-						OverrideEntry:     ovEntry,
-						NormalizedCommand: normalizedCmd,
-					}
-				}
-				if saEntry := e.checkSessionAllow(cmd, ruleID); saEntry != nil {
-					if e.trace != nil {
-						e.trace.RecordSessionAllowCheck("post-match (normalized)", saEntry, true)
-						e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
-					}
-					return &EvaluationResult{
-						Decision:          DecisionAllow,
-						Command:           cmd,
-						SessionEntry:      saEntry,
-						NormalizedCommand: normalizedCmd,
-					}
-				}
-				if e.trace != nil {
-					e.trace.RecordFinalDecision(DecisionDeny, time.Since(start))
-				}
-				return &EvaluationResult{
-					Decision:          DecisionDeny,
-					Command:           cmd,
-					PatternInfo:       match,
-					NormalizedCommand: normalizedCmd,
-				}
-			}
-		}
-		
-		// If we scanned but no match.
-		if e.trace != nil {
+		} else if e.trace != nil {
 			e.trace.RecordPackEvaluation(p.ID, false, false, nil)
 		}
 	}
 
-	// Step 8 — Default Allow.
+	// Step 9 — Default Allow.
 	if e.trace != nil {
 		e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
 	}
 	return result
+}
+
+func newOverrideDecisionResult(decision EvaluationDecision, command, normalizedCmd string, entry *override.Entry, source MatchSource, baseMatch *PatternMatch) *EvaluationResult {
+	result := &EvaluationResult{
+		Decision:          decision,
+		Command:           command,
+		NormalizedCommand: normalizedCmd,
+		OverrideEntry:     entry,
+	}
+	if decision == DecisionAllow {
+		return result
+	}
+
+	match := &PatternMatch{
+		Reason: overrideDecisionReason(entry),
+		Source: source,
+	}
+	if baseMatch != nil {
+		match.RuleID = baseMatch.RuleID
+		match.PackID = baseMatch.PackID
+		match.PatternName = baseMatch.PatternName
+		match.Severity = baseMatch.Severity
+		match.Explanation = baseMatch.Explanation
+		match.Suggestions = baseMatch.Suggestions
+		match.MatchedSpan = baseMatch.MatchedSpan
+	}
+	result.PatternInfo = match
+	return result
+}
+
+func overrideDecisionReason(entry *override.Entry) string {
+	return "command matches override " + entry.Action + ": " + entry.Value
 }
 
 // EnabledPackIDs returns the list of enabled pack IDs.
@@ -529,11 +569,174 @@ func (e *Evaluator) EnabledPackIDs() []string {
 	return e.packIDs
 }
 
-func isBitSet(mask [2]uint64, i int) bool {
-	if i >= maxPacks {
-		return false // out of bitmask range — fail-open
+// postPackChecks runs the post-pack allow/override/session checks after a destructive match.
+// Returns an EvaluationResult if the match should be overridden, or nil to proceed with deny/ask.
+func (e *Evaluator) postPackChecks(ctx context.Context, cmd, normalizedCmd, ruleID string, simpleCommands []ast.SimpleCommand, match *PatternMatch, dm *packs.DestructiveMatch, start time.Time) *EvaluationResult {
+	_ = ctx // reserved for future deadline checks
+
+	// Post-pack: check rule allow by rule-ID first.
+	if ra := e.checkRuleAllow(cmd, ruleID, simpleCommands); ra != nil {
+		if e.trace != nil {
+			e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
+		}
+		return &EvaluationResult{
+			Decision:          DecisionAllow,
+			Command:           cmd,
+			RuleEntry:         ra,
+			NormalizedCommand: normalizedCmd,
+		}
 	}
-	word := i / 64
-	bit := uint64(1) << (i % 64)
-	return mask[word]&bit != 0
+	if normalizedCmd != cmd {
+		if ra := e.checkRuleAllow(normalizedCmd, ruleID, simpleCommands); ra != nil {
+			if e.trace != nil {
+				e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
+			}
+			return &EvaluationResult{
+				Decision:          DecisionAllow,
+				Command:           cmd,
+				RuleEntry:         ra,
+				NormalizedCommand: normalizedCmd,
+			}
+		}
+	}
+	// Post-pack override checks.
+	if ovEntry := e.checkOverrideAsk(cmd, ruleID); ovEntry != nil {
+		if e.trace != nil {
+			e.trace.RecordOverrideCheck("ask-after-match", ovEntry)
+			e.trace.RecordFinalDecision(DecisionAsk, time.Since(start))
+		}
+		return newOverrideDecisionResult(DecisionAsk, cmd, normalizedCmd, ovEntry, SourceOverrideAsk, match)
+	}
+	if normalizedCmd != cmd {
+		if ovEntry := e.checkOverrideAsk(normalizedCmd, ruleID); ovEntry != nil {
+			if e.trace != nil {
+				e.trace.RecordOverrideCheck("ask-after-match (cleaned)", ovEntry)
+				e.trace.RecordFinalDecision(DecisionAsk, time.Since(start))
+			}
+			return newOverrideDecisionResult(DecisionAsk, cmd, normalizedCmd, ovEntry, SourceOverrideAsk, match)
+		}
+	}
+	if ovEntry := e.checkOverrideAllow(cmd, ruleID); ovEntry != nil {
+		if e.trace != nil {
+			e.trace.RecordOverrideCheck("allow-after-match", ovEntry)
+			e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
+		}
+		return newOverrideDecisionResult(DecisionAllow, cmd, normalizedCmd, ovEntry, SourceOverrideAllow, match)
+	}
+	if normalizedCmd != cmd {
+		if ovEntry := e.checkOverrideAllow(normalizedCmd, ruleID); ovEntry != nil {
+			if e.trace != nil {
+				e.trace.RecordOverrideCheck("allow-after-match (cleaned)", ovEntry)
+				e.trace.RecordFinalDecision(DecisionAllow, time.Since(start))
+			}
+			return newOverrideDecisionResult(DecisionAllow, cmd, normalizedCmd, ovEntry, SourceOverrideAllow, match)
+		}
+	}
+	// Check session entries.
+	if saEntry := e.checkSessionMatch(cmd, ruleID); saEntry != nil {
+		decision := DecisionAllow
+		if saEntry.Action == "ask" {
+			decision = DecisionAsk
+		}
+		if e.trace != nil {
+			e.trace.RecordSessionAllowCheck("post-match", saEntry, decision == DecisionAllow)
+			e.trace.RecordFinalDecision(decision, time.Since(start))
+		}
+		if decision == DecisionAsk {
+			return newSessionDecisionResult(decision, cmd, normalizedCmd, saEntry, match)
+		}
+		return &EvaluationResult{
+			Decision:          decision,
+			Command:           cmd,
+			SessionEntry:      saEntry,
+			NormalizedCommand: normalizedCmd,
+		}
+	}
+	if normalizedCmd != cmd {
+		if saEntry := e.checkSessionMatch(normalizedCmd, ruleID); saEntry != nil {
+			decision := DecisionAllow
+			if saEntry.Action == "ask" {
+				decision = DecisionAsk
+			}
+			if e.trace != nil {
+				e.trace.RecordSessionAllowCheck("post-match (cleaned)", saEntry, decision == DecisionAllow)
+				e.trace.RecordFinalDecision(decision, time.Since(start))
+			}
+			if decision == DecisionAsk {
+				return newSessionDecisionResult(decision, cmd, normalizedCmd, saEntry, match)
+			}
+			return &EvaluationResult{
+				Decision:          decision,
+				Command:           cmd,
+				SessionEntry:      saEntry,
+				NormalizedCommand: normalizedCmd,
+			}
+		}
+	}
+	// No override — return deny/ask.
+	decision := DecisionDeny
+	if dm.Action == "ask" {
+		decision = DecisionAsk
+	}
+	if e.trace != nil {
+		e.trace.RecordFinalDecision(decision, time.Since(start))
+	}
+	return &EvaluationResult{
+		Decision:          decision,
+		Command:           cmd,
+		PatternInfo:       match,
+		NormalizedCommand: normalizedCmd,
+	}
+}
+
+func newSessionDecisionResult(decision EvaluationDecision, command, normalizedCmd string, entry *session.Entry, baseMatch *PatternMatch) *EvaluationResult {
+	result := &EvaluationResult{
+		Decision:          decision,
+		Command:           command,
+		NormalizedCommand: normalizedCmd,
+		SessionEntry:      entry,
+	}
+	if decision == DecisionAllow {
+		return result
+	}
+
+	match := &PatternMatch{
+		Reason: "command matches session " + entry.Action + ": " + entry.Value,
+		Source: SourceSessionAllow, // reuse SourceSessionAllow but decision is Ask
+	}
+	if baseMatch != nil {
+		match.RuleID = baseMatch.RuleID
+		match.PackID = baseMatch.PackID
+		match.PatternName = baseMatch.PatternName
+		match.Severity = baseMatch.Severity
+		match.Explanation = baseMatch.Explanation
+		match.Suggestions = baseMatch.Suggestions
+		match.MatchedSpan = baseMatch.MatchedSpan
+	}
+	result.PatternInfo = match
+	return result
+}
+
+
+func (e *Evaluator) resetRuleState() {
+	e.packs = append(e.packs[:0], e.basePacks...)
+	e.packIDs = append(e.packIDs[:0], e.basePackIDs...)
+	e.kwIndex = e.rebuildKeywordIndex()
+	e.ruleAllows = nil
+	e.hasCommandAllowRules = false
+}
+
+func (e *Evaluator) rebuildKeywordIndex() *EnabledKeywordIndex {
+	kwEntries := make([]PackKeywords, 0, len(e.packs))
+	for i, p := range e.packs {
+		kwEntries = append(kwEntries, PackKeywords{
+			PackIndex: i,
+			Keywords:  p.Keywords,
+		})
+	}
+	return NewEnabledKeywordIndex(kwEntries)
+}
+
+func isBitSet(mask packMask, i int) bool {
+	return mask.isSet(i)
 }

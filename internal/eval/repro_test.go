@@ -233,6 +233,24 @@ func TestRepro_SafePatternCompoundBypass(t *testing.T) {
 	}
 }
 
+// TestRepro_XargsBypass guards against wrapper pipelines that route a
+// destructive command through xargs, which should still be denied.
+func TestRepro_XargsBypass(t *testing.T) {
+	e := newTestEvaluator()
+
+	cases := []string{
+		`cat file | xargs rm -rf /`,
+		`printf '/\n' | xargs -0 rm -rf /`,
+	}
+
+	for _, cmd := range cases {
+		result := e.Evaluate(testCtx(t), cmd)
+		if result.Decision != DecisionDeny {
+			t.Errorf("expected DENY for %q, got %v (rule: %v)", cmd, result.Decision, ruleID(result))
+		}
+	}
+}
+
 // TestRepro_WindowsExeSuffix guards against Windows-style `.exe` suffixes on
 // binary names bypassing detection rules that match only bare command names.
 func TestRepro_WindowsExeSuffix(t *testing.T) {

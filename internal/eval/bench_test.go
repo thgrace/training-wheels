@@ -7,6 +7,7 @@ import (
 
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/packs"
+	"github.com/thgrace/training-wheels/internal/rules"
 )
 
 func BenchmarkNewEvaluator(b *testing.B) {
@@ -154,5 +155,47 @@ func BenchmarkQuickReject_LongCommand(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		e.kwIndex.QuickReject(cmd)
+	}
+}
+
+func BenchmarkEvaluate_CommandAllowRules(b *testing.B) {
+	cfg := config.DefaultConfig()
+	reg := packs.DefaultRegistry()
+	cfg.Packs.Enabled = reg.AllIDs()
+	e := NewEvaluator(cfg, reg)
+	e.SetRules(&rules.RulesFile{
+		Rules: []rules.RuleEntry{
+			{
+				Name:     "allow-git-status",
+				Action:   "allow",
+				Kind:     "command",
+				When:     &packs.PatternCondition{Command: []string{"git"}, Subcommand: []string{"status"}},
+				Reason:   "allow git status",
+				Keywords: []string{"git"},
+			},
+			{
+				Name:     "allow-git-diff",
+				Action:   "allow",
+				Kind:     "command",
+				When:     &packs.PatternCondition{Command: []string{"git"}, Subcommand: []string{"diff"}},
+				Reason:   "allow git diff",
+				Keywords: []string{"git"},
+			},
+			{
+				Name:     "allow-git-log",
+				Action:   "allow",
+				Kind:     "command",
+				When:     &packs.PatternCondition{Command: []string{"git"}, Subcommand: []string{"log"}},
+				Reason:   "allow git log",
+				Keywords: []string{"git"},
+			},
+		},
+	}, nil)
+
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.Evaluate(ctx, "git status")
 	}
 }

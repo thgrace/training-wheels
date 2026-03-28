@@ -28,6 +28,15 @@ func FuzzEvaluateCommand(f *testing.F) {
 		`echo "$(echo " ) " )"; rm -rf /`,
 		"git re\\\nset --hard",
 		"nice rm -rf /",
+		// PowerShell seeds
+		"Remove-Item -Recurse -Force C:\\Windows",
+		"Get-Process | Stop-Process -Force",
+		`powershell -Command "Remove-Item -Recurse /tmp"`,
+		`Invoke-Expression "rm -rf /"`,
+		"Stop-Service -Name svc1; Start-Service -Name svc2",
+		// cmd.exe seeds
+		`cmd /c "rmdir /s /q C:\temp"`,
+		`cmd /c "del /f /q C:\temp\*"`,
 	}
 	for _, s := range seeds {
 		f.Add(s)

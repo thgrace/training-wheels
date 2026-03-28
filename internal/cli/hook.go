@@ -5,14 +5,11 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/thgrace/training-wheels/internal/config"
+	"github.com/thgrace/training-wheels/internal/app"
 	"github.com/thgrace/training-wheels/internal/eval"
 	"github.com/thgrace/training-wheels/internal/exitcodes"
 	"github.com/thgrace/training-wheels/internal/hook"
 	"github.com/thgrace/training-wheels/internal/logger"
-	"github.com/thgrace/training-wheels/internal/override"
-	"github.com/thgrace/training-wheels/internal/packs"
-	"github.com/thgrace/training-wheels/internal/session"
 	"github.com/thgrace/training-wheels/internal/shellcontext"
 )
 
@@ -24,7 +21,7 @@ var hookCmd = &cobra.Command{
 
 func runHook(cmd *cobra.Command, args []string) error {
 	// Load config — fail-open on error.
-	cfg, err := config.Load()
+	cfg, err := app.LoadConfig()
 	if err != nil {
 		logger.Error("config error, allowing command", "error", err)
 		os.Exit(exitcodes.Allow)
@@ -48,8 +45,6 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build evaluator.
-	evaluator := eval.NewEvaluator(cfg, packs.DefaultRegistry())
-
 	// Detect shell context from hook input or environment.
 	var shell shellcontext.Shell
 	if input.ToolName != nil {
@@ -59,27 +54,15 @@ func runHook(cmd *cobra.Command, args []string) error {
 	} else {
 		shell = shellcontext.DefaultShell()
 	}
-	evaluator.SetShell(shell)
-
-	// Load overrides (fail-open on error).
-	user, project, ovErr := override.LoadMerged()
-	if ovErr != nil {
-		logger.Warn("override load error, continuing without overrides", "error", ovErr)
-	} else {
-		evaluator.SetOverrides(user, project)
-	}
-
-	// Load session allowlist (fail-open).
-	if token, _ := session.ReadToken(); token != "" {
-		if secret, err := session.LoadOrCreateSecret(session.SecretPath()); err == nil {
-			if sa, err := session.Load(token, secret); err == nil {
-				evaluator.SetSessionAllows(sa)
-			}
-		}
-	}
+	evaluator := app.NewEvaluator(cfg, app.EvalOptions{
+		Shell:         shell,
+		LoadOverrides: true,
+		LoadRules:     true,
+		LoadSession:   true,
+	})
 
 	// Set up timeout.
-	ctx, cancel := evalContext(cfg)
+	ctx, cancel := app.EvalContext(cfg)
 	defer cancel()
 
 	// Evaluate.
@@ -91,13 +74,35 @@ func runHook(cmd *cobra.Command, args []string) error {
 		os.Exit(exitcodes.Allow)
 	}
 
-	if result.OverrideEntry != nil && result.Decision == eval.DecisionAllow {
-		// Command was allowed by override — log it for visibility.
-		logger.Info("allowed by override",
-			"id", result.OverrideEntry.ID,
-			"action", result.OverrideEntry.Action,
-			"kind", result.OverrideEntry.Kind,
-			"value", result.OverrideEntry.Value)
+	if result.OverrideEntry != nil {
+		switch result.Decision {
+		case eval.DecisionAllow:
+			logger.Info("allowed by override",
+				"id", result.OverrideEntry.ID,
+				"action", result.OverrideEntry.Action,
+				"kind", result.OverrideEntry.Kind,
+				"value", result.OverrideEntry.Value)
+			os.Exit(exitcodes.Allow)
+		case eval.DecisionDeny:
+			logger.Info("denied by override",
+				"id", result.OverrideEntry.ID,
+				"action", result.OverrideEntry.Action,
+				"kind", result.OverrideEntry.Kind,
+				"value", result.OverrideEntry.Value)
+		case eval.DecisionAsk:
+			logger.Info("verification required by override",
+				"id", result.OverrideEntry.ID,
+				"action", result.OverrideEntry.Action,
+				"kind", result.OverrideEntry.Kind,
+				"value", result.OverrideEntry.Value)
+		}
+	}
+
+	if result.RuleEntry != nil && result.Decision == eval.DecisionAllow {
+		logger.Info("allowed by custom rule",
+			"name", result.RuleEntry.Name,
+			"kind", result.RuleEntry.Kind,
+			"pattern", result.RuleEntry.Pattern)
 		os.Exit(exitcodes.Allow)
 	}
 
@@ -109,8 +114,8 @@ func runHook(cmd *cobra.Command, args []string) error {
 		os.Exit(exitcodes.Allow)
 	}
 
-	// Apply DefaultAction if it was a denial.
-	if result.Decision == eval.DecisionDeny {
+	// Apply DefaultAction only to pack denials.
+	if result.Decision == eval.DecisionDeny && result.PatternInfo != nil && result.PatternInfo.Source == eval.SourcePack {
 		if strings.ToLower(cfg.Packs.DefaultAction) == "ask" {
 			result.Decision = eval.DecisionAsk
 		}
@@ -130,6 +135,11 @@ func runHook(cmd *cobra.Command, args []string) error {
 			"rule_id", pi.RuleID,
 			"pack_id", pi.PackID,
 			"severity", pi.Severity)
+		// Gemini reads the JSON decision field to block; exit 0 avoids a spurious
+		// "hook failed" warning. Claude/Copilot use exit 1 to signal non-allow.
+		if protocol == hook.ProtocolGemini {
+			os.Exit(exitcodes.Allow)
+		}
 		os.Exit(exitcodes.Deny)
 	}
 
@@ -147,9 +157,13 @@ func runHook(cmd *cobra.Command, args []string) error {
 			"rule_id", pi.RuleID,
 			"pack_id", pi.PackID,
 			"severity", pi.Severity)
+		// Gemini reads the JSON decision field; exit 0 avoids a spurious "hook failed" warning.
+		// Claude/Copilot use exit 1 so the agent knows to inspect the JSON payload.
+		if protocol == hook.ProtocolGemini {
+			os.Exit(exitcodes.Allow)
+		}
 		os.Exit(exitcodes.Deny)
 	}
 
-	os.Exit(exitcodes.Allow)
-	return nil
+	return silentExit(exitcodes.Allow)
 }

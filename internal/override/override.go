@@ -1,7 +1,7 @@
 // Package override provides persistent override management for TW.
 // Entries are stored in JSON files at user (~/.tw/overrides.json)
 // and project (.tw/overrides.json) levels.
-// Each entry has an action (allow or deny) and a selector (exact, prefix, or rule).
+// Each entry has an action (allow, deny, or ask) and a selector (exact, prefix, or rule).
 package override
 
 import (
@@ -16,15 +16,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thgrace/training-wheels/internal/matchutil"
 	"github.com/thgrace/training-wheels/internal/osutil"
 )
 
-// Action identifies whether an override allows or denies.
+// Action identifies whether an override allows, denies, or asks for confirmation.
 type Action int
 
 const (
 	ActionAllow Action = iota
 	ActionDeny
+	ActionAsk
 )
 
 func (a Action) String() string {
@@ -33,6 +35,8 @@ func (a Action) String() string {
 		return "allow"
 	case ActionDeny:
 		return "deny"
+	case ActionAsk:
+		return "ask"
 	default:
 		return "unknown"
 	}
@@ -63,7 +67,7 @@ func (k SelectorKind) String() string {
 // Entry is a single override entry.
 type Entry struct {
 	ID      string    `json:"id"`
-	Action  string    `json:"action"` // "allow" or "deny"
+	Action  string    `json:"action"` // "allow", "deny", or "ask"
 	Kind    string    `json:"kind"`   // "exact", "prefix", or "rule"
 	Value   string    `json:"value"`  // The command, prefix, or rule ID pattern
 	Reason  string    `json:"reason"` // Human explanation
@@ -78,48 +82,10 @@ func (e *Entry) Matches(command string, ruleID string) bool {
 	case "prefix":
 		return strings.HasPrefix(command, e.Value)
 	case "rule":
-		return matchRule(e.Value, ruleID)
+		return matchutil.MatchRule(e.Value, ruleID)
 	default:
 		return false
 	}
-}
-
-// matchRule matches a rule ID pattern against a concrete rule ID.
-// Supports * as a wildcard for any sequence of characters (including empty).
-// Multiple wildcards are supported.
-// e.g., "core.git:*" matches "core.git:reset-hard"
-// e.g., "core.*:*" matches "core.git:reset-hard"
-// e.g., "core.*:reset-*" matches "core.git:reset-hard"
-func matchRule(pattern, ruleID string) bool {
-	if pattern == "*" {
-		return true
-	}
-	if !strings.Contains(pattern, "*") {
-		return pattern == ruleID
-	}
-	// Split pattern on * to get literal segments, then verify
-	// ruleID contains all segments in order.
-	segments := strings.Split(pattern, "*")
-
-	// The ruleID must start with the first segment.
-	if !strings.HasPrefix(ruleID, segments[0]) {
-		return false
-	}
-	// Walk through ruleID, matching each segment in order.
-	remaining := ruleID[len(segments[0]):]
-	for _, seg := range segments[1:] {
-		idx := strings.Index(remaining, seg)
-		if idx < 0 {
-			return false
-		}
-		remaining = remaining[idx+len(seg):]
-	}
-	// If the pattern does not end with *, the ruleID must end exactly
-	// at the last segment (no trailing characters allowed).
-	if !strings.HasSuffix(pattern, "*") && remaining != "" {
-		return false
-	}
-	return true
 }
 
 // Overrides is the in-memory representation of an overrides file.
@@ -204,11 +170,11 @@ func (o *Overrides) Remove(id string) bool {
 	return false
 }
 
-// MatchesDeny checks if any deny entry matches the given command+ruleID.
-// Returns the first matching deny entry, or nil.
-func (o *Overrides) MatchesDeny(command, ruleID string) *Entry {
+// MatchesAsk checks if any ask entry matches the given command+ruleID.
+// Returns the first matching ask entry, or nil.
+func (o *Overrides) MatchesAsk(command, ruleID string) *Entry {
 	for i := range o.Entries {
-		if o.Entries[i].Action == "deny" && o.Entries[i].Matches(command, ruleID) {
+		if o.Entries[i].Action == "ask" && o.Entries[i].Matches(command, ruleID) {
 			return &o.Entries[i]
 		}
 	}
@@ -268,22 +234,6 @@ func LoadMerged() (user *Overrides, project *Overrides, err error) {
 	return user, project, nil
 }
 
-// CheckDeny checks if a command is denied by either the user or project overrides.
-// Project overrides are checked first (higher precedence).
-func CheckDeny(command, ruleID string, user, project *Overrides) *Entry {
-	if project != nil {
-		if e := project.MatchesDeny(command, ruleID); e != nil {
-			return e
-		}
-	}
-	if user != nil {
-		if e := user.MatchesDeny(command, ruleID); e != nil {
-			return e
-		}
-	}
-	return nil
-}
-
 // CheckAllow checks if a command is allowed by either the user or project overrides.
 // Project overrides are checked first (higher precedence).
 func CheckAllow(command, ruleID string, user, project *Overrides) *Entry {
@@ -294,6 +244,22 @@ func CheckAllow(command, ruleID string, user, project *Overrides) *Entry {
 	}
 	if user != nil {
 		if e := user.MatchesAllow(command, ruleID); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// CheckAsk checks if a command should require confirmation by either the user
+// or project overrides. Project overrides are checked first (higher precedence).
+func CheckAsk(command, ruleID string, user, project *Overrides) *Entry {
+	if project != nil {
+		if e := project.MatchesAsk(command, ruleID); e != nil {
+			return e
+		}
+	}
+	if user != nil {
+		if e := user.MatchesAsk(command, ruleID); e != nil {
 			return e
 		}
 	}

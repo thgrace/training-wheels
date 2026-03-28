@@ -1,15 +1,25 @@
-FROM golang:1.26-alpine AS build
+FROM golang:1.26-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN go build -o /tw ./cmd/tw/
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash build-essential ca-certificates curl file git procps \
+    && rm -rf /var/lib/apt/lists/*
+RUN NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
 COPY --from=build /tw /usr/local/bin/tw
+RUN brew install --cask claude-code \
+    && brew install gemini-cli
 RUN /usr/local/bin/tw install
 COPY scripts/smoke-lib.sh /scripts/smoke-lib.sh
 COPY scripts/smoke-test.sh /scripts/smoke-test.sh
 COPY scripts/smoke/ /scripts/smoke/
-RUN chmod +x /scripts/smoke-test.sh /scripts/smoke-lib.sh
+COPY scripts/policy-lib.sh /scripts/policy-lib.sh
+COPY scripts/policy-test.sh /scripts/policy-test.sh
+COPY scripts/policy/ /scripts/policy/
+RUN chmod +x /scripts/smoke-test.sh /scripts/smoke-lib.sh /scripts/policy-test.sh /scripts/policy-lib.sh
 ENTRYPOINT ["/scripts/smoke-test.sh"]

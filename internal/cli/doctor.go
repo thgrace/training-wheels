@@ -1,21 +1,20 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 
 	"github.com/spf13/cobra"
+	"github.com/thgrace/training-wheels/internal/agentsettings"
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/packs"
 	"github.com/thgrace/training-wheels/internal/skills"
 )
 
-var doctorFormat string
+var doctorJSON bool
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
@@ -24,7 +23,7 @@ var doctorCmd = &cobra.Command{
 }
 
 func init() {
-	doctorCmd.Flags().StringVar(&doctorFormat, "format", "pretty", "Output format: pretty or json")
+	bindJSONOutputFlags(doctorCmd.Flags(), &doctorJSON)
 }
 
 type checkResult struct {
@@ -43,35 +42,39 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	checks = append(checks, checkPacks())
 	checks = append(checks, checkSkills()...)
 
-	if doctorFormat == "json" {
-		data, _ := json.MarshalIndent(checks, "", "  ")
-		fmt.Fprintln(cmd.OutOrStdout(), string(data))
+	if useJSONOutput(doctorJSON) {
+		if err := writeJSONOutput(cmd.OutOrStdout(), checks); err != nil {
+			return err
+		}
 	} else {
 		printDoctorPretty(cmd.OutOrStdout(), checks)
 	}
 
 	for _, c := range checks {
 		if c.Status == "error" {
-			os.Exit(1)
+			return silentExit(1)
 		}
 	}
 	return nil
 }
 
 func checkBinary() checkResult {
-	path, err := exec.LookPath("tw")
+	path, err := os.Executable()
 	if err != nil {
 		return checkResult{
 			Name:    "binary",
 			Status:  "error",
-			Message: "tw not found in PATH",
-			Fix:     "Add tw to your PATH or install it",
+			Message: fmt.Sprintf("Cannot determine current binary path: %v", err),
+			Fix:     "Reinstall tw or check binary permissions",
 		}
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
 	}
 	return checkResult{
 		Name:    "binary",
 		Status:  "ok",
-		Message: fmt.Sprintf("Binary found: %s (%s/%s)", path, runtime.GOOS, runtime.GOARCH),
+		Message: fmt.Sprintf("Binary running from: %s (%s/%s)", path, runtime.GOOS, runtime.GOARCH),
 	}
 }
 
@@ -103,7 +106,7 @@ func checkHooksInstalled() []checkResult {
 		}}
 	}
 
-	agents := detectAgents(home, nil)
+	agents := agentsettings.Detect(home, nil)
 	if len(agents) == 0 {
 		return []checkResult{{
 			Name:    "hook",
@@ -115,8 +118,8 @@ func checkHooksInstalled() []checkResult {
 
 	var results []checkResult
 	for _, a := range agents {
-		userPath := agentSettingsPath(a, false, home)
-		projectPath := agentSettingsPath(a, true, home)
+		userPath := agentsettings.SettingsPath(a, false, home)
+		projectPath := agentsettings.SettingsPath(a, true, home)
 
 		userInstalled := isAgentHookInstalled(a, userPath, "tw")
 		projectInstalled := isAgentHookInstalled(a, projectPath, "tw")
@@ -144,13 +147,9 @@ func checkHooksInstalled() []checkResult {
 	return results
 }
 
-func isAgentHookInstalled(a agentDef, path, twHookRef string) bool {
-	data, err := os.ReadFile(path)
+func isAgentHookInstalled(a agentsettings.Agent, path, twHookRef string) bool {
+	settings, _, err := agentsettings.ReadSettings(path)
 	if err != nil {
-		return false
-	}
-	settings := make(map[string]interface{})
-	if err := json.Unmarshal(data, &settings); err != nil {
 		return false
 	}
 	return a.HookExists(settings, twHookRef)
@@ -171,10 +170,12 @@ func checkPacks() checkResult {
 	enabledIDs, _ := reg.ResolveEnabledSet(cfg.Packs.Enabled, cfg.Packs.Disabled)
 	enabledCount := len(enabledIDs)
 
+	message := fmt.Sprintf("%d packs loaded (%d enabled)", len(allIDs), enabledCount)
+
 	return checkResult{
 		Name:    "packs",
 		Status:  "ok",
-		Message: fmt.Sprintf("%d packs loaded (%d enabled)", len(allIDs), enabledCount),
+		Message: message,
 	}
 }
 
@@ -197,7 +198,7 @@ func checkSkills() []checkResult {
 	}
 
 	// Only check Claude skill location if Claude is detected.
-	agents := detectAgents(home, nil)
+	agents := agentsettings.Detect(home, nil)
 	for _, a := range agents {
 		if a.Name == "claude" {
 			targets = append(targets, target{"skill:claude", filepath.Join(home, skills.ClaudeSkillRelDir)})

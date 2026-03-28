@@ -21,90 +21,83 @@
         "kafka-broker-api-versions",
         "rpk"
       ],
-      "safe_patterns": [
-        {
-          "name": "kafka-topics-list",
-          "regex": "kafka-topics(?:\\.sh)?\\b.*\\s--list\\b"
-        },
-        {
-          "name": "kafka-topics-describe",
-          "regex": "kafka-topics(?:\\.sh)?\\b.*\\s--describe\\b"
-        },
-        {
-          "name": "kafka-consumer-groups-list",
-          "regex": "kafka-consumer-groups(?:\\.sh)?\\b.*\\s--list\\b"
-        },
-        {
-          "name": "kafka-consumer-groups-describe",
-          "regex": "kafka-consumer-groups(?:\\.sh)?\\b.*\\s--describe\\b"
-        },
-        {
-          "name": "kafka-acls-list",
-          "regex": "kafka-acls(?:\\.sh)?\\b.*\\s--list\\b"
-        },
-        {
-          "name": "kafka-configs-describe",
-          "regex": "kafka-configs(?:\\.sh)?\\b.*\\s--describe\\b"
-        },
-        {
-          "name": "kafka-console-consumer",
-          "regex": "kafka-console-consumer(?:\\.sh)?\\b"
-        },
-        {
-          "name": "kafka-console-producer",
-          "regex": "kafka-console-producer(?:\\.sh)?\\b"
-        },
-        {
-          "name": "kafka-broker-api-versions",
-          "regex": "kafka-broker-api-versions(?:\\.sh)?\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "kafka-topics-delete",
-          "regex": "kafka-topics(?:\\.sh)?\\b.*\\s--delete\\b",
+          "when": {
+            "command": [
+              "kafka-topics"
+            ]
+          },
           "reason": "kafka-topics --delete removes Kafka topics and data.",
           "severity": "critical",
           "explanation": "Deleting a Kafka topic permanently removes all messages and partitions. Consumers will receive errors, and any unprocessed data is lost. Producer applications may fail until they handle the missing topic.\n\nSafer alternatives:\n- kafka-topics --describe: Review topic details first\n- Set retention.ms to expire data naturally\n- Back up critical data before deletion"
         },
         {
           "name": "kafka-consumer-groups-delete",
-          "regex": "kafka-consumer-groups(?:\\.sh)?\\b.*\\s--delete\\b",
+          "when": {
+            "command": [
+              "kafka-consumer-groups"
+            ]
+          },
           "reason": "kafka-consumer-groups --delete removes consumer groups and offsets.",
           "severity": "high",
           "explanation": "Deleting a consumer group removes all committed offsets. When consumers reconnect, they will start from the earliest or latest offset based on their configuration, potentially reprocessing or skipping messages.\n\nSafer alternatives:\n- kafka-consumer-groups --describe: Check group status first\n- Reset offsets instead of deleting the group\n- Ensure all consumers are stopped before deletion"
         },
         {
           "name": "kafka-consumer-groups-reset-offsets",
-          "regex": "kafka-consumer-groups(?:\\.sh)?\\b.*\\s--reset-offsets\\b",
+          "when": {
+            "command": [
+              "kafka-consumer-groups"
+            ]
+          },
           "reason": "kafka-consumer-groups --reset-offsets rewinds offsets and can cause reprocessing.",
           "severity": "high",
           "explanation": "Resetting consumer offsets can cause messages to be reprocessed or skipped. This affects data consistency if your consumers are not idempotent. Resetting to the earliest offset on a high-volume topic may trigger massive reprocessing.\n\nSafer alternatives:\n- Use --dry-run to preview the reset first\n- Reset to a specific timestamp or offset for precision\n- Ensure consumers are stopped before resetting"
         },
         {
           "name": "kafka-configs-delete-config",
-          "regex": "kafka-configs(?:\\.sh)?\\b.*\\s--alter\\b.*\\s--delete-config\\b",
+          "when": {
+            "command": [
+              "kafka-configs"
+            ]
+          },
           "reason": "kafka-configs --alter --delete-config removes broker/topic configs.",
           "severity": "high",
           "explanation": "Deleting configuration overrides reverts topics or brokers to default settings. This can unexpectedly change retention, replication, or compression behavior.\n\nSafer alternatives:\n- kafka-configs --describe: Review current configuration first\n- Set explicit values instead of deleting to revert to defaults\n- Test configuration changes in a non-production environment"
         },
         {
           "name": "kafka-acls-remove",
-          "regex": "kafka-acls(?:\\.sh)?\\b.*\\s--remove\\b",
+          "when": {
+            "command": [
+              "kafka-acls"
+            ]
+          },
           "reason": "kafka-acls --remove deletes ACLs and can break access controls.",
           "severity": "high",
           "explanation": "Removing ACLs can immediately break access for producers and consumers. Applications may fail with authorization errors, causing message loss or processing delays.\n\nSafer alternatives:\n- kafka-acls --list: Review existing ACLs first\n- Test ACL changes in a non-production environment\n- Add new ACLs before removing old ones during transitions"
         },
         {
           "name": "kafka-delete-records",
-          "regex": "kafka-delete-records(?:\\.sh)?\\b",
+          "when": {
+            "command": [
+              "kafka-delete-records"
+            ]
+          },
           "reason": "kafka-delete-records deletes records up to specified offsets.",
           "severity": "critical",
           "explanation": "This command permanently deletes messages from topic partitions up to the specified offsets. Deleted data cannot be recovered. Consumers attempting to read deleted offsets will encounter errors.\n\nSafer alternatives:\n- Use retention policies for automatic data expiration\n- Verify the offset JSON file carefully before execution\n- Consider topic compaction for key-based retention"
         },
         {
           "name": "rpk-topic-delete",
-          "regex": "rpk\\b.*\\stopic\\s+delete\\b",
+          "when": {
+            "command": [
+              "rpk"
+            ],
+            "subcommand": [
+              "delete"
+            ]
+          },
           "reason": "rpk topic delete removes topics (Kafka-compatible).",
           "severity": "critical",
           "explanation": "Deleting a topic via rpk (Redpanda) permanently removes all data and partitions, similar to kafka-topics --delete. This affects both Redpanda and Kafka-compatible systems.\n\nSafer alternatives:\n- rpk topic describe: Review topic details first\n- rpk topic list: Verify the topic name\n- Use retention settings for data lifecycle management"
@@ -119,78 +112,104 @@
         "rabbitmqadmin",
         "rabbitmqctl"
       ],
-      "safe_patterns": [
-        {
-          "name": "rabbitmqadmin-list",
-          "regex": "rabbitmqadmin(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+list\\b"
-        },
-        {
-          "name": "rabbitmqadmin-show",
-          "regex": "rabbitmqadmin(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+show\\b"
-        },
-        {
-          "name": "rabbitmqctl-status",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+status\\b"
-        },
-        {
-          "name": "rabbitmqctl-list-queues",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+list_queues\\b"
-        },
-        {
-          "name": "rabbitmqctl-cluster-status",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+cluster_status\\b"
-        },
-        {
-          "name": "rabbitmqctl-report",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+report\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "rabbitmqadmin-delete-queue",
-          "regex": "rabbitmqadmin(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete\\s+queue\\b",
+          "when": {
+            "command": [
+              "rabbitmqadmin"
+            ],
+            "subcommand": [
+              "delete",
+              "queue"
+            ]
+          },
           "reason": "rabbitmqadmin delete queue permanently deletes a queue.",
           "severity": "critical",
           "explanation": "Deleting a queue permanently removes all messages and bindings. Consumers will disconnect, and producers will fail unless they handle the missing queue. Undelivered messages are lost.\n\nSafer alternatives:\n- rabbitmqadmin list queues: Review queues first\n- rabbitmqadmin purge queue: Remove messages but keep the queue\n- Set TTL or max-length policies for automatic cleanup"
         },
         {
           "name": "rabbitmqadmin-delete-exchange",
-          "regex": "rabbitmqadmin(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete\\s+exchange\\b",
+          "when": {
+            "command": [
+              "rabbitmqadmin"
+            ],
+            "subcommand": [
+              "delete",
+              "exchange"
+            ]
+          },
           "reason": "rabbitmqadmin delete exchange removes an exchange and its bindings.",
           "severity": "high",
           "explanation": "Deleting an exchange removes all bindings to queues. Messages published to this exchange will be lost unless an alternate exchange is configured. Publishers may not receive errors if they don't use confirms.\n\nSafer alternatives:\n- rabbitmqadmin list exchanges: Review exchanges first\n- rabbitmqadmin list bindings: Check dependent bindings\n- Rebind queues to a new exchange before deletion"
         },
         {
           "name": "rabbitmqadmin-purge-queue",
-          "regex": "rabbitmqadmin(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+purge\\s+queue\\b",
+          "when": {
+            "command": [
+              "rabbitmqadmin"
+            ],
+            "subcommand": [
+              "purge",
+              "queue"
+            ]
+          },
           "reason": "rabbitmqadmin purge queue deletes ALL messages in the queue.",
           "severity": "high",
           "explanation": "Purging a queue deletes all messages immediately. Messages that were waiting to be consumed are permanently lost. This cannot be undone.\n\nSafer alternatives:\n- rabbitmqadmin show queue: Check message count first\n- Consume and process messages instead of purging\n- Set message TTL for automatic expiration"
         },
         {
           "name": "rabbitmqctl-delete-vhost",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete_vhost\\b",
+          "when": {
+            "command": [
+              "rabbitmqctl"
+            ],
+            "subcommand": [
+              "delete_vhost"
+            ]
+          },
           "reason": "rabbitmqctl delete_vhost removes a vhost and all its resources.",
           "severity": "critical",
           "explanation": "Deleting a vhost removes ALL queues, exchanges, bindings, policies, and user permissions within that vhost. This is a complete wipe of that namespace.\n\nSafer alternatives:\n- rabbitmqctl list_vhosts: Review vhosts first\n- rabbitmqctl list_queues -p <vhost>: Check resources in vhost\n- Export definitions before deletion"
         },
         {
           "name": "rabbitmqctl-forget-cluster-node",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+forget_cluster_node\\b",
+          "when": {
+            "command": [
+              "rabbitmqctl"
+            ],
+            "subcommand": [
+              "forget_cluster_node"
+            ]
+          },
           "reason": "rabbitmqctl forget_cluster_node permanently removes a node from the cluster.",
           "severity": "high",
           "explanation": "Forgetting a cluster node removes it from the cluster metadata. Use this only for permanently failed nodes. Mirrored queues may lose replicas, and quorum queues may lose availability if quorum is affected.\n\nSafer alternatives:\n- rabbitmqctl cluster_status: Review cluster state first\n- Try to recover the node instead of forgetting\n- Ensure quorum is maintained after removal"
         },
         {
           "name": "rabbitmqctl-reset",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+reset\\b",
+          "when": {
+            "command": [
+              "rabbitmqctl"
+            ],
+            "subcommand": [
+              "reset"
+            ]
+          },
           "reason": "rabbitmqctl reset wipes all configuration, queues, and bindings on the node.",
           "severity": "critical",
           "explanation": "Reset returns the node to a blank state, removing all exchanges, queues, bindings, users, vhosts, and permissions. The node is removed from any cluster it was part of.\n\nSafer alternatives:\n- Export definitions before reset\n- Use stop_app/start_app for service restart without data loss\n- Consider forget_cluster_node for cluster membership changes only"
         },
         {
           "name": "rabbitmqctl-force-reset",
-          "regex": "rabbitmqctl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+force_reset\\b",
+          "when": {
+            "command": [
+              "rabbitmqctl"
+            ],
+            "subcommand": [
+              "force_reset"
+            ]
+          },
           "reason": "rabbitmqctl force_reset wipes node data and can break cluster state.",
           "severity": "critical",
           "explanation": "Force reset ignores cluster state and wipes the node unconditionally. This can leave the cluster in an inconsistent state where other nodes still expect this node to exist.\n\nSafer alternatives:\n- Try rabbitmqctl reset first (safer)\n- Coordinate with cluster members before force reset\n- Document the cluster state for recovery"
@@ -204,87 +223,90 @@
       "keywords": [
         "nats"
       ],
-      "safe_patterns": [
-        {
-          "name": "nats-stream-info",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+stream\\s+info\\b"
-        },
-        {
-          "name": "nats-stream-ls",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+stream\\s+ls\\b"
-        },
-        {
-          "name": "nats-consumer-info",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+consumer\\s+info\\b"
-        },
-        {
-          "name": "nats-consumer-ls",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+consumer\\s+ls\\b"
-        },
-        {
-          "name": "nats-kv-get",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+kv\\s+get\\b"
-        },
-        {
-          "name": "nats-kv-ls",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+kv\\s+ls\\b"
-        },
-        {
-          "name": "nats-pub",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+pub\\b"
-        },
-        {
-          "name": "nats-sub",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sub\\b"
-        },
-        {
-          "name": "nats-server-info",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+server\\s+info\\b"
-        },
-        {
-          "name": "nats-bench",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+bench\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "nats-stream-delete",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+stream\\s+(?:delete|rm)\\b",
+          "when": {
+            "command": [
+              "nats"
+            ],
+            "subcommand": [
+              "stream"
+            ]
+          },
           "reason": "nats stream delete/rm removes a JetStream stream and all its messages.",
           "severity": "critical",
           "explanation": "Deleting a JetStream stream permanently removes all stored messages, consumers, and configuration. Applications relying on this stream will lose access to historical data.\n\nSafer alternatives:\n- nats stream info: Review stream details first\n- nats stream purge: Remove messages but keep the stream\n- Back up stream configuration before deletion"
         },
         {
           "name": "nats-stream-purge",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+stream\\s+purge\\b",
+          "when": {
+            "command": [
+              "nats"
+            ],
+            "subcommand": [
+              "stream",
+              "purge"
+            ]
+          },
           "reason": "nats stream purge deletes ALL messages from the stream.",
           "severity": "high",
           "explanation": "Purging a stream removes all messages while keeping the stream and consumer configurations intact. Consumers will have no messages to process until new ones arrive.\n\nSafer alternatives:\n- nats stream info: Check message count first\n- Use --seq to purge only messages up to a specific sequence\n- Use --keep to retain the last N messages"
         },
         {
           "name": "nats-consumer-delete",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+consumer\\s+(?:delete|rm)\\b",
+          "when": {
+            "command": [
+              "nats"
+            ],
+            "subcommand": [
+              "consumer"
+            ]
+          },
           "reason": "nats consumer delete/rm removes a JetStream consumer.",
           "severity": "high",
           "explanation": "Deleting a consumer removes its acknowledgment state and delivery tracking. Messages may be redelivered to other consumers or lost if this was the only consumer.\n\nSafer alternatives:\n- nats consumer info: Review consumer state first\n- Pause the consumer instead of deleting\n- Ensure other consumers exist for critical streams"
         },
         {
           "name": "nats-kv-delete",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+kv\\s+(?:delete|del|rm)\\b",
+          "when": {
+            "command": [
+              "nats"
+            ],
+            "subcommand": [
+              "kv"
+            ]
+          },
           "reason": "nats kv del/rm deletes key-value entries.",
           "severity": "high",
           "explanation": "Deleting KV entries removes data that applications may depend on. If history is disabled, the deletion is permanent and cannot be recovered.\n\nSafer alternatives:\n- nats kv get: Retrieve and back up the value first\n- nats kv history: Check if history is enabled\n- Use TTL for automatic expiration instead of manual deletion"
         },
         {
           "name": "nats-object-delete",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+object\\s+delete\\b",
+          "when": {
+            "command": [
+              "nats"
+            ],
+            "subcommand": [
+              "object",
+              "delete"
+            ]
+          },
           "reason": "nats object delete removes an object from the store.",
           "severity": "high",
           "explanation": "Deleting an object from the object store removes the file and its metadata. Applications expecting this object will receive errors.\n\nSafer alternatives:\n- nats object info: Review object details first\n- Download the object before deletion\n- Use object versioning if available"
         },
         {
           "name": "nats-account-delete",
-          "regex": "nats(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+account\\s+delete\\b",
+          "when": {
+            "command": [
+              "nats"
+            ],
+            "subcommand": [
+              "account",
+              "delete"
+            ]
+          },
           "reason": "nats account delete removes an account and its resources.",
           "severity": "critical",
           "explanation": "Deleting a NATS account removes all streams, consumers, and permissions associated with that account. All applications using this account will lose connectivity.\n\nSafer alternatives:\n- Review account resources before deletion\n- Migrate resources to another account first\n- Disable the account instead of deleting"
@@ -300,85 +322,123 @@
         "sqs",
         "sns"
       ],
-      "safe_patterns": [
-        {
-          "name": "aws-sqs-list-queues",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sqs\\s+list-queues\\b"
-        },
-        {
-          "name": "aws-sqs-get-queue-attributes",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sqs\\s+get-queue-attributes\\b"
-        },
-        {
-          "name": "aws-sqs-receive-message",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sqs\\s+receive-message\\b"
-        },
-        {
-          "name": "aws-sns-list-topics",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sns\\s+list-topics\\b"
-        },
-        {
-          "name": "aws-sns-list-subscriptions",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sns\\s+list-subscriptions\\b"
-        },
-        {
-          "name": "aws-sns-get-topic-attributes",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sns\\s+get-topic-attributes\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "aws-sqs-delete-queue",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sqs\\s+delete-queue\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sqs",
+              "delete-queue"
+            ]
+          },
           "reason": "aws sqs delete-queue permanently deletes an SQS queue.",
           "severity": "critical",
           "explanation": "Deleting an SQS queue removes the queue and all messages in it. Messages in flight are lost, and any applications sending to this queue will receive errors. You must wait 60 seconds before recreating a queue with the same name.\n\nSafer alternatives:\n- aws sqs get-queue-attributes: Review queue metrics first\n- aws sqs purge-queue: Remove messages but keep the queue\n- Use message retention period for automatic cleanup"
         },
         {
           "name": "aws-sqs-purge-queue",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sqs\\s+purge-queue\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sqs",
+              "purge-queue"
+            ]
+          },
           "reason": "aws sqs purge-queue deletes ALL messages in the queue.",
           "severity": "high",
           "explanation": "Purging an SQS queue deletes all messages immediately. This includes messages in flight and delayed messages. The operation cannot be undone. You can only purge a queue once every 60 seconds.\n\nSafer alternatives:\n- aws sqs get-queue-attributes: Check message count first\n- Process messages normally instead of purging\n- Use dead-letter queues for failed messages"
         },
         {
           "name": "aws-sqs-delete-message-batch",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sqs\\s+delete-message-batch\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sqs",
+              "delete-message-batch"
+            ]
+          },
           "reason": "aws sqs delete-message-batch removes multiple messages from the queue.",
           "severity": "medium",
           "explanation": "Batch deletion removes up to 10 messages at once. Messages must be successfully processed before deletion, or they will be lost. Ensure your processing logic is complete before calling delete.\n\nSafer alternatives:\n- Verify receipt handles are still valid\n- Use visibility timeout to prevent duplicate processing\n- Delete messages only after confirmed processing"
         },
         {
           "name": "aws-sqs-delete-message",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sqs\\s+delete-message(?:[\\s]|$)",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sqs",
+              "delete-message"
+            ]
+          },
           "reason": "aws sqs delete-message removes a message from the queue.",
           "severity": "medium",
           "explanation": "Deleting a message removes it permanently from the queue. Only delete after successful processing. If processing fails after deletion, the message is lost.\n\nSafer alternatives:\n- Extend visibility timeout if processing takes longer\n- Use dead-letter queues for failed processing\n- Implement idempotent processing for safety"
         },
         {
           "name": "aws-sns-delete-topic",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sns\\s+delete-topic\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sns",
+              "delete-topic"
+            ]
+          },
           "reason": "aws sns delete-topic removes an SNS topic and its subscriptions.",
           "severity": "critical",
           "explanation": "Deleting an SNS topic removes all subscriptions and stops all message delivery. Publishers will receive errors. Lambda functions, SQS queues, and other subscribers will no longer receive notifications.\n\nSafer alternatives:\n- aws sns list-subscriptions-by-topic: Review subscribers first\n- Unsubscribe endpoints individually if needed\n- Use topic policies to restrict publishing instead"
         },
         {
           "name": "aws-sns-unsubscribe",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sns\\s+unsubscribe\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sns",
+              "unsubscribe"
+            ]
+          },
           "reason": "aws sns unsubscribe removes a subscription and stops message delivery.",
           "severity": "high",
           "explanation": "Unsubscribing stops message delivery to that endpoint. If this is a critical integration (Lambda, SQS, HTTP endpoint), that system will stop receiving notifications immediately.\n\nSafer alternatives:\n- aws sns get-subscription-attributes: Review subscription first\n- Use subscription filter policies to reduce traffic\n- Disable the endpoint instead of unsubscribing"
         },
         {
           "name": "aws-sns-remove-permission",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sns\\s+remove-permission\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sns",
+              "remove-permission"
+            ]
+          },
           "reason": "aws sns remove-permission revokes permissions on a topic.",
           "severity": "high",
           "explanation": "Removing permissions can break cross-account access or service integrations. AWS services and other accounts may lose the ability to publish or subscribe to the topic.\n\nSafer alternatives:\n- aws sns get-topic-attributes: Review current policy first\n- Add new permissions before removing old ones\n- Use IAM policies for fine-grained access control"
         },
         {
           "name": "aws-sns-delete-platform-application",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sns\\s+delete-platform-application\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sns",
+              "delete-platform-application"
+            ]
+          },
           "reason": "aws sns delete-platform-application removes a platform application.",
           "severity": "high",
           "explanation": "Deleting a platform application removes all endpoints and stops push notifications to mobile devices. All registered device tokens are removed, and users will stop receiving push notifications.\n\nSafer alternatives:\n- aws sns list-endpoints-by-platform-application: Review endpoints\n- Disable individual endpoints instead of deleting the app\n- Back up endpoint ARNs before deletion"

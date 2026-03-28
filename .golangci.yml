@@ -46,3 +46,7 @@ linters:
       - text: "Error return value of `os\\.Remove` is not checked"
         linters:
           - errcheck
+      # fmt.Fprint* writes to CLI output writers — failure is unrecoverable and intentionally ignored.
+      - text: "Error return value of `fmt\\.Fprint"
+        linters:
+          - errcheck

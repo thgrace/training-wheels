@@ -61,6 +61,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
       - name: Download release binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,17 +77,84 @@ jobs:
           cd artifacts
           sha256sum tw-* > checksums.txt
 
-      - name: Upload checksums to release
+      - name: Generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          artifact-name: sbom.cdx.json
+          output-file: artifacts/sbom.cdx.json
+
+      - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.ref_name }}" \
             artifacts/checksums.txt \
+            artifacts/sbom.cdx.json \
             --clobber \
             --repo "${{ github.repository }}"
 
+  cosign-sign:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+
+      - name: Download release binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "tw-*" \
+            --dir artifacts
+
+      - name: Sign binaries with cosign keyless
+        run: |
+          cd artifacts
+          for f in tw-*; do
+            cosign sign-blob --yes --bundle "${f}.bundle" "$f"
+          done
+
+      - name: Upload signature bundles
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            artifacts/*.bundle \
+            --clobber \
+            --repo "${{ github.repository }}"
+
+  attest:
+    needs: [checksums, cosign-sign]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+    steps:
+      - name: Download release binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "tw-*" \
+            --dir artifacts
+          # Remove non-binary files (bundles, provenance) so attestation targets only binaries
+          rm -f artifacts/*.bundle artifacts/*.intoto.jsonl
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: 'artifacts/tw-*'
+
   publish-release:
-    needs: checksums
+    needs: attest
     runs-on: ubuntu-latest
     permissions:
       contents: write

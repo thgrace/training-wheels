@@ -207,33 +207,27 @@ func TestInvariant_DecisionDeterminism(t *testing.T) {
 }
 
 // TestInvariant_NormalizedCommandPopulated verifies that when the evaluator
-// denies a command that required normalization (e.g. stripping a sudo prefix or
-// an absolute binary path), NormalizedCommand is populated and differs from the
-// original input.
+// denies a command, NormalizedCommand is populated (non-empty). In the AST
+// pipeline NormalizedCommand is set to the cleaned input (CR strip + backslash
+// normalize only) and does not strip sudo/paths, so we only assert non-empty.
 func TestInvariant_NormalizedCommandPopulated(t *testing.T) {
 	e := newTestEvaluator()
 
-	tests := []struct {
-		cmd            string
-		wantNormalized bool // whether NormalizedCommand should differ from cmd
-	}{
-		{"sudo git reset --hard", true},
-		{"/usr/bin/git reset --hard", true},
-		{"git reset --hard", false},
-		{"git.exe reset --hard", true},
+	commands := []string{
+		"sudo git reset --hard",
+		"/usr/bin/git reset --hard",
+		"git reset --hard",
+		"git.exe reset --hard",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.cmd, func(t *testing.T) {
-			result := e.Evaluate(testCtx(t), tt.cmd)
+	for _, cmd := range commands {
+		t.Run(cmd, func(t *testing.T) {
+			result := e.Evaluate(testCtx(t), cmd)
 			if result.Decision != DecisionDeny {
 				t.Skipf("command was not denied, skipping normalization check")
 			}
-			if tt.wantNormalized && result.NormalizedCommand == "" {
-				t.Error("expected NormalizedCommand to be populated")
-			}
-			if tt.wantNormalized && result.NormalizedCommand == tt.cmd {
-				t.Errorf("NormalizedCommand should differ from input, got same: %q", result.NormalizedCommand)
+			if result.NormalizedCommand == "" {
+				t.Error("expected NormalizedCommand to be non-empty for denied command")
 			}
 		})
 	}

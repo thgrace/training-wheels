@@ -2,13 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/thgrace/training-wheels/internal/agentsettings"
 )
 
 func TestAgentHookExists(t *testing.T) {
-	for _, a := range allAgents {
+	for _, a := range agentsettings.AllAgents {
 		t.Run(a.Name, func(t *testing.T) {
 			settings := make(map[string]interface{})
 			if a.HookExists(settings, "tw") {
@@ -23,7 +26,7 @@ func TestAgentHookExists(t *testing.T) {
 }
 
 func TestAgentRemoveHookEntry(t *testing.T) {
-	for _, a := range allAgents {
+	for _, a := range agentsettings.AllAgents {
 		t.Run(a.Name+"_not_present", func(t *testing.T) {
 			settings := make(map[string]interface{})
 			if a.RemoveHookEntry(settings, "tw") {
@@ -44,7 +47,7 @@ func TestAgentRemoveHookEntry(t *testing.T) {
 }
 
 func TestAgentAddIdempotent(t *testing.T) {
-	for _, a := range allAgents {
+	for _, a := range agentsettings.AllAgents {
 		t.Run(a.Name, func(t *testing.T) {
 			settings := make(map[string]interface{})
 			a.AddHookEntry(settings, "tw")
@@ -61,7 +64,7 @@ func TestAgentAddIdempotent(t *testing.T) {
 }
 
 func TestCursorCopilotVersionField(t *testing.T) {
-	agents := []agentDef{cursorAgent, copilotAgent}
+	agents := []agentsettings.Agent{agentsettings.Cursor, agentsettings.Copilot}
 	for _, a := range agents {
 		t.Run(a.Name, func(t *testing.T) {
 			settings := make(map[string]interface{})
@@ -85,7 +88,7 @@ func TestDetectAgents(t *testing.T) {
 	os.Mkdir(filepath.Join(home, ".claude"), 0o755)
 	os.Mkdir(filepath.Join(home, ".gemini"), 0o755)
 
-	agents := detectAgents(home, nil)
+	agents := agentsettings.Detect(home, nil)
 	names := agentNames(agents)
 
 	if len(agents) != 2 {
@@ -102,7 +105,7 @@ func TestDetectAgentsWithFilter(t *testing.T) {
 	// No agent directories exist.
 
 	// Filter limits results; explicit filter includes agents even without dirs.
-	agents := detectAgents(home, []string{"cursor", "copilot"})
+	agents := agentsettings.Detect(home, []string{"cursor", "copilot"})
 	names := agentNames(agents)
 	if len(agents) != 2 {
 		t.Fatalf("got %d agents %v, want 2 (cursor, copilot)", len(agents), names)
@@ -114,7 +117,7 @@ func TestDetectAgentsWithFilter(t *testing.T) {
 	// Filter with existing dirs should still only return filtered agents.
 	os.Mkdir(filepath.Join(home, ".claude"), 0o755)
 	os.Mkdir(filepath.Join(home, ".cursor"), 0o755)
-	agents = detectAgents(home, []string{"claude"})
+	agents = agentsettings.Detect(home, []string{"claude"})
 	names = agentNames(agents)
 	if len(agents) != 1 || names[0] != "claude" {
 		t.Fatalf("got agents %v, want [claude]", names)
@@ -122,14 +125,21 @@ func TestDetectAgentsWithFilter(t *testing.T) {
 }
 
 func TestInstallForAgentUsesPathHook(t *testing.T) {
-	for _, a := range allAgents {
+	for _, a := range agentsettings.AllAgents {
 		t.Run(a.Name, func(t *testing.T) {
 			settingsPath := filepath.Join(t.TempDir(), a.UserFile)
 
 			var out bytes.Buffer
-			installForAgent(&out, a, settingsPath, "tw")
+			reporter := newInstallReporter(&out, false)
+			installForAgent(reporter, a, settingsPath, "tw")
+			if err := reporter.flush(); err != nil {
+				t.Fatalf("flush: %v", err)
+			}
 
-			settings, existed := readSettings(settingsPath)
+			settings, existed, err := agentsettings.ReadSettings(settingsPath)
+			if err != nil {
+				t.Fatalf("read settings: %v", err)
+			}
 			if !existed {
 				t.Fatal("settings file was not created")
 			}
@@ -141,18 +151,27 @@ func TestInstallForAgentUsesPathHook(t *testing.T) {
 }
 
 func TestUninstallForAgentRemovesPathHook(t *testing.T) {
-	for _, a := range allAgents {
+	for _, a := range agentsettings.AllAgents {
 		t.Run(a.Name, func(t *testing.T) {
 			settingsPath := filepath.Join(t.TempDir(), a.UserFile)
 			settings := make(map[string]interface{})
 			a.AddHookEntry(settings, "tw")
 			a.AddHookEntry(settings, "other-tool")
-			writeSettings(settingsPath, settings)
+			if err := agentsettings.WriteSettings(settingsPath, settings); err != nil {
+				t.Fatalf("write settings: %v", err)
+			}
 
 			var out bytes.Buffer
-			uninstallForAgent(&out, a, settingsPath, "tw")
+			reporter := newInstallReporter(&out, false)
+			uninstallForAgent(reporter, a, settingsPath, "tw")
+			if err := reporter.flush(); err != nil {
+				t.Fatalf("flush: %v", err)
+			}
 
-			updated, existed := readSettings(settingsPath)
+			updated, existed, err := agentsettings.ReadSettings(settingsPath)
+			if err != nil {
+				t.Fatalf("read settings: %v", err)
+			}
 			if !existed {
 				t.Fatal("settings file disappeared")
 			}
@@ -166,7 +185,35 @@ func TestUninstallForAgentRemovesPathHook(t *testing.T) {
 	}
 }
 
-func agentNames(agents []agentDef) []string {
+func TestInstallReporterJSON(t *testing.T) {
+	var out bytes.Buffer
+	reporter := newInstallReporter(&out, true)
+
+	reporter.record(installAction{
+		Kind:    "hook",
+		Status:  "installed",
+		Message: "ignored in json mode",
+		Path:    "/tmp/settings.json",
+		Agent:   "claude",
+	})
+
+	if err := reporter.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var got []installAction
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("reporter output is not valid json: %v\noutput=%q", err, out.String())
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1", len(got))
+	}
+	if got[0].Kind != "hook" || got[0].Status != "installed" || got[0].Agent != "claude" {
+		t.Fatalf("unexpected action: %+v", got[0])
+	}
+}
+
+func agentNames(agents []agentsettings.Agent) []string {
 	names := make([]string, len(agents))
 	for i, a := range agents {
 		names[i] = a.Name

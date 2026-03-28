@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/thgrace/training-wheels/internal/matchutil"
 )
 
 func TestAdd_AllowExact(t *testing.T) {
@@ -31,6 +33,17 @@ func TestAdd_DenyExact(t *testing.T) {
 	e := o.Add(ActionDeny, SelectorExact, "evil-command", "Never run this")
 	if e.Action != "deny" {
 		t.Errorf("action = %q, want deny", e.Action)
+	}
+	if e.Kind != "exact" {
+		t.Errorf("kind = %q, want exact", e.Kind)
+	}
+}
+
+func TestAdd_AskExact(t *testing.T) {
+	o := &Overrides{path: "/dev/null"}
+	e := o.Add(ActionAsk, SelectorExact, "kubectl delete ns prod", "Require confirmation")
+	if e.Action != "ask" {
+		t.Errorf("action = %q, want ask", e.Action)
 	}
 	if e.Kind != "exact" {
 		t.Errorf("kind = %q, want exact", e.Kind)
@@ -123,22 +136,6 @@ func TestRemove(t *testing.T) {
 	}
 }
 
-func TestMatchesDeny(t *testing.T) {
-	o := &Overrides{path: "/dev/null"}
-	o.Add(ActionDeny, SelectorExact, "evil-cmd", "dangerous")
-	o.Add(ActionAllow, SelectorExact, "safe-cmd", "safe")
-
-	if o.MatchesDeny("evil-cmd", "") == nil {
-		t.Error("should match deny entry")
-	}
-	if o.MatchesDeny("safe-cmd", "") != nil {
-		t.Error("should not match allow entry as deny")
-	}
-	if o.MatchesDeny("other-cmd", "") != nil {
-		t.Error("should not match unrelated command")
-	}
-}
-
 func TestMatchesAllow(t *testing.T) {
 	o := &Overrides{path: "/dev/null"}
 	o.Add(ActionAllow, SelectorExact, "rm -rf ./dist", "cleanup")
@@ -156,6 +153,23 @@ func TestMatchesAllow(t *testing.T) {
 	}
 	if o.MatchesAllow("ls -la", "safe:list") != nil {
 		t.Error("should not match unrelated command")
+	}
+}
+
+func TestMatchesAsk(t *testing.T) {
+	o := &Overrides{path: "/dev/null"}
+	o.Add(ActionAsk, SelectorExact, "kubectl delete ns prod", "Require confirmation")
+	o.Add(ActionAsk, SelectorRule, "core.git:reset-hard", "Require confirmation")
+	o.Add(ActionAllow, SelectorExact, "safe-cmd", "safe")
+
+	if o.MatchesAsk("kubectl delete ns prod", "") == nil {
+		t.Error("should match exact ask")
+	}
+	if o.MatchesAsk("", "core.git:reset-hard") == nil {
+		t.Error("should match rule ask")
+	}
+	if o.MatchesAsk("safe-cmd", "") != nil {
+		t.Error("should not match allow entry as ask")
 	}
 }
 
@@ -206,24 +220,6 @@ func TestLoad_NonExistent(t *testing.T) {
 	}
 }
 
-func TestCheckDeny(t *testing.T) {
-	user := &Overrides{path: "/dev/null"}
-	user.Add(ActionDeny, SelectorExact, "user-deny", "from user")
-
-	project := &Overrides{path: "/dev/null"}
-	project.Add(ActionDeny, SelectorExact, "project-deny", "from project")
-
-	if e := CheckDeny("project-deny", "", user, project); e == nil {
-		t.Error("should match project deny")
-	}
-	if e := CheckDeny("user-deny", "", user, project); e == nil {
-		t.Error("should match user deny")
-	}
-	if e := CheckDeny("other-cmd", "", user, project); e != nil {
-		t.Error("should not match")
-	}
-}
-
 func TestCheckAllow(t *testing.T) {
 	user := &Overrides{path: "/dev/null"}
 	user.Add(ActionAllow, SelectorExact, "user-cmd", "from user")
@@ -242,6 +238,24 @@ func TestCheckAllow(t *testing.T) {
 	}
 }
 
+func TestCheckAsk(t *testing.T) {
+	user := &Overrides{path: "/dev/null"}
+	user.Add(ActionAsk, SelectorExact, "user-ask", "from user")
+
+	project := &Overrides{path: "/dev/null"}
+	project.Add(ActionAsk, SelectorExact, "project-ask", "from project")
+
+	if e := CheckAsk("project-ask", "", user, project); e == nil {
+		t.Error("should match project ask")
+	}
+	if e := CheckAsk("user-ask", "", user, project); e == nil {
+		t.Error("should match user ask")
+	}
+	if e := CheckAsk("other-cmd", "", user, project); e != nil {
+		t.Error("should not match")
+	}
+}
+
 func TestCheckAllow_ProjectPrecedence(t *testing.T) {
 	user := &Overrides{path: "/dev/null"}
 	user.Add(ActionAllow, SelectorExact, "shared-cmd", "from user")
@@ -252,6 +266,7 @@ func TestCheckAllow_ProjectPrecedence(t *testing.T) {
 	e := CheckAllow("shared-cmd", "", user, project)
 	if e == nil {
 		t.Fatal("should match")
+		return
 	}
 	if e.Reason != "from project" {
 		t.Errorf("should prefer project entry, got reason=%q", e.Reason)
@@ -286,6 +301,14 @@ func TestLoad_FromJSONWithEntries(t *testing.T) {
       "value": "evil-command",
       "reason": "Never allow this",
       "added_at": "2025-01-01T00:00:00Z"
+    },
+    {
+      "id": "ov-test4",
+      "action": "ask",
+      "kind": "rule",
+      "value": "core.filesystem:rm-rf-general",
+      "reason": "Require confirmation",
+      "added_at": "2025-01-01T00:00:00Z"
     }
   ]
 }`
@@ -297,8 +320,8 @@ func TestLoad_FromJSONWithEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(o.Entries) != 3 {
-		t.Fatalf("expected 3 entries, got %d", len(o.Entries))
+	if len(o.Entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(o.Entries))
 	}
 	if o.Entries[0].Kind != "exact" || o.Entries[0].Value != "rm -rf ./dist" {
 		t.Errorf("entry 0: kind=%q value=%q", o.Entries[0].Kind, o.Entries[0].Value)
@@ -309,8 +332,8 @@ func TestLoad_FromJSONWithEntries(t *testing.T) {
 	if o.MatchesAllow("", "core.git:push-force") == nil {
 		t.Error("loaded rule wildcard allow entry should match")
 	}
-	if o.MatchesDeny("evil-command", "") == nil {
-		t.Error("loaded deny entry should match")
+	if o.MatchesAsk("", "core.filesystem:rm-rf-general") == nil {
+		t.Error("loaded ask entry should match")
 	}
 }
 
@@ -341,24 +364,21 @@ func TestMatchRule_MultiWildcard(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := matchRule(tt.pattern, tt.ruleID)
+			got := matchutil.MatchRule(tt.pattern, tt.ruleID)
 			if got != tt.want {
-				t.Errorf("matchRule(%q, %q) = %v, want %v", tt.pattern, tt.ruleID, got, tt.want)
+				t.Errorf("MatchRule(%q, %q) = %v, want %v", tt.pattern, tt.ruleID, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestDenyOverridesAllow(t *testing.T) {
-	// If a command matches both a deny and allow entry, the deny and allow
-	// are separate lookups — the evaluator decides precedence (deny wins).
+func TestAskMatchesIndependently(t *testing.T) {
 	o := &Overrides{path: "/dev/null"}
-	o.Add(ActionDeny, SelectorExact, "risky-cmd", "denied")
+	o.Add(ActionAsk, SelectorExact, "risky-cmd", "ask first")
 	o.Add(ActionAllow, SelectorExact, "risky-cmd", "allowed")
 
-	// Both should match independently.
-	if o.MatchesDeny("risky-cmd", "") == nil {
-		t.Error("should match deny")
+	if o.MatchesAsk("risky-cmd", "") == nil {
+		t.Error("should match ask")
 	}
 	if o.MatchesAllow("risky-cmd", "") == nil {
 		t.Error("should match allow")

@@ -6,11 +6,13 @@
       "name": "Alpha One",
       "description": "embedded alpha pack",
       "keywords": ["alpha"],
-      "safe_patterns": [],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "alpha-block",
-          "regex": "^alpha dangerous$",
+          "when": {
+            "command": ["alpha"],
+            "arg_exact": ["dangerous"]
+          },
           "reason": "alpha block",
           "severity": "high"
         }

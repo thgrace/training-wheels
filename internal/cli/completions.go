@@ -11,14 +11,13 @@ var completionsCmd = &cobra.Command{
 	Short: "Generate shell completion scripts",
 	Long: `Generate shell completion scripts for tw.
 
-Usage:
-  tw completions bash       > ~/.bash_completion.d/tw
-  tw completions zsh        > ~/.zsh/completions/_tw
-  tw completions fish       > ~/.config/fish/completions/tw.fish
-  tw completions powershell > tw.ps1`,
+	Usage:
+	  tw completions bash       > ~/.bash_completion.d/tw
+	  tw completions zsh        > ~/.zsh/completions/_tw
+	  tw completions fish       > ~/.config/fish/completions/tw.fish
+	  tw completions powershell > tw.ps1`,
 	Args:      cobra.ExactArgs(1),
 	ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
-	Hidden:    true,
 	RunE:      runCompletions,
 }
 

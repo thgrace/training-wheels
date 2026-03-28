@@ -52,9 +52,8 @@ func TestLoadFileRejectsDuplicateIDsWithinFile(t *testing.T) {
       "name": "First",
       "description": "first",
       "keywords": ["demo"],
-      "safe_patterns": [],
-      "destructive_patterns": [
-        {"name": "block-first", "regex": "^demo first$", "reason": "first", "severity": "high"}
+      "structural_patterns": [
+        {"name": "block-first", "when": {"command": ["demo"], "arg_exact": ["first"]}, "reason": "first", "severity": "high"}
       ]
     },
     {
@@ -62,9 +61,8 @@ func TestLoadFileRejectsDuplicateIDsWithinFile(t *testing.T) {
       "name": "Second",
       "description": "second",
       "keywords": ["demo"],
-      "safe_patterns": [],
-      "destructive_patterns": [
-        {"name": "block-second", "regex": "^demo second$", "reason": "second", "severity": "low"}
+      "structural_patterns": [
+        {"name": "block-second", "when": {"command": ["demo"], "arg_exact": ["second"]}, "reason": "second", "severity": "low"}
       ]
     }
   ]
@@ -85,10 +83,9 @@ func TestLoadFileRejectsRegistryDuplicatesButKeepsUniquePacks(t *testing.T) {
 		Name:        "Existing",
 		Description: "already loaded",
 		Keywords:    []string{"demo"},
-		DestructivePatterns: []packs.DestructivePattern{
+		StructuralPatterns: []packs.StructuralPattern{
 			{
 				Name:     "block-existing",
-				Regex:    packs.NewLazyRegex("^existing$"),
 				Reason:   "existing",
 				Severity: packs.SeverityHigh,
 			},
@@ -105,9 +102,8 @@ func TestLoadFileRejectsRegistryDuplicatesButKeepsUniquePacks(t *testing.T) {
       "name": "Replacement",
       "description": "should be ignored",
       "keywords": ["demo"],
-      "safe_patterns": [],
-      "destructive_patterns": [
-        {"name": "block-replacement", "regex": "^replace$", "reason": "replace", "severity": "critical"}
+      "structural_patterns": [
+        {"name": "block-replacement", "when": {"command": ["demo"], "arg_exact": ["replace"]}, "reason": "replace", "severity": "critical"}
       ]
     },
     {
@@ -115,9 +111,8 @@ func TestLoadFileRejectsRegistryDuplicatesButKeepsUniquePacks(t *testing.T) {
       "name": "Unique",
       "description": "should load",
       "keywords": ["demo"],
-      "safe_patterns": [],
-      "destructive_patterns": [
-        {"name": "block-unique", "regex": "^unique$", "reason": "unique", "severity": "medium"}
+      "structural_patterns": [
+        {"name": "block-unique", "when": {"command": ["demo"], "arg_exact": ["unique"]}, "reason": "unique", "severity": "medium"}
       ]
     }
   ]
@@ -148,9 +143,8 @@ func TestLoadFromDirSkipsInvalidFiles(t *testing.T) {
       "name": "Good",
       "description": "loads",
       "keywords": ["demo"],
-      "safe_patterns": [],
-      "destructive_patterns": [
-        {"name": "block-good", "regex": "^good$", "reason": "good", "severity": "high"}
+      "structural_patterns": [
+        {"name": "block-good", "when": {"command": ["demo"], "arg_exact": ["good"]}, "reason": "good", "severity": "high"}
       ]
     }
   ]
@@ -163,9 +157,8 @@ func TestLoadFromDirSkipsInvalidFiles(t *testing.T) {
       "name": "Bad",
       "description": "rejected",
       "keywords": ["demo"],
-      "safe_patterns": [],
-      "destructive_patterns": [
-        {"name": "block-bad", "regex": "^bad$", "reason": "bad", "severity": "high"}
+      "structural_patterns": [
+        {"name": "block-bad", "when": {"command": ["demo"], "arg_exact": ["bad"]}, "reason": "bad", "severity": "high"}
       ]
     }
   ]
@@ -184,7 +177,7 @@ func TestLoadFromDirSkipsInvalidFiles(t *testing.T) {
 	}
 }
 
-func TestLoadFileRejectsInvalidRegex(t *testing.T) {
+func TestLoadFileRejectsInvalidStructuralPattern(t *testing.T) {
 	reg := packs.NewEmptyRegistry()
 	path := writePackFile(t, t.TempDir(), "lazy.json", `{
   "category": "demo",
@@ -192,22 +185,21 @@ func TestLoadFileRejectsInvalidRegex(t *testing.T) {
     {
       "id": "demo.lazy",
       "name": "Lazy",
-      "description": "invalid regex is rejected at load time",
+      "description": "invalid structural pattern is rejected at load time",
       "keywords": ["demo"],
-      "safe_patterns": [],
-      "destructive_patterns": [
-        {"name": "block-lazy", "regex": "(", "reason": "invalid", "severity": "critical"}
+      "structural_patterns": [
+        {"name": "block-lazy", "reason": "invalid", "severity": "critical"}
       ]
     }
   ]
 }`)
 
 	if err := reg.LoadFile(path); err == nil {
-		t.Fatal("LoadFile should reject invalid regex at load time")
+		t.Fatal("LoadFile should reject structural pattern missing when clause at load time")
 	}
 
 	if pack := reg.Get("demo.lazy"); pack != nil {
-		t.Fatal("pack with invalid regex should not be in registry")
+		t.Fatal("pack with invalid structural pattern should not be in registry")
 	}
 }
 

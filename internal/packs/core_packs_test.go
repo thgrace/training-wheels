@@ -7,35 +7,11 @@ import (
 )
 
 // ----------------------------------------------------------------------------
-// helpers
-// ----------------------------------------------------------------------------
-
-func getGitPack(t *testing.T) *packs.Pack {
-	t.Helper()
-	reg := packs.DefaultRegistry()
-	p := reg.Get("core.git")
-	if p == nil {
-		t.Fatal("core.git pack not found in registry")
-	}
-	return p
-}
-
-func getFilesystemPack(t *testing.T) *packs.Pack {
-	t.Helper()
-	reg := packs.DefaultRegistry()
-	p := reg.Get("core.filesystem")
-	if p == nil {
-		t.Fatal("core.filesystem pack not found in registry")
-	}
-	return p
-}
-
-// ----------------------------------------------------------------------------
 // core.git
 // ----------------------------------------------------------------------------
 
 func TestCoreGit_PatternRuleIDs(t *testing.T) {
-	p := getGitPack(t)
+	p := loadPack(t, "core.git")
 
 	tests := []struct {
 		name     string
@@ -53,10 +29,18 @@ func TestCoreGit_PatternRuleIDs(t *testing.T) {
 		{"clean force --force", "git clean --force", "clean-force", packs.SeverityCritical},
 		{"push force long", "git push --force", "push-force-long", packs.SeverityCritical},
 		{"push force short", "git push -f", "push-force-short", packs.SeverityCritical},
+		{"push mirror", "git push --mirror", "push-mirror", packs.SeverityCritical},
 		{"push force origin main", "git push origin main --force", "push-force-long", packs.SeverityCritical},
 		{"checkout discard", "git checkout -- file.txt", "checkout-discard", packs.SeverityHigh},
+		{"checkout ref discard", "git checkout HEAD -- file.txt", "checkout-discard", packs.SeverityHigh},
 		{"restore all files", "git restore .", "restore-worktree", packs.SeverityHigh},
+		{"restore worktree explicit", "git restore --worktree .", "restore-worktree-explicit", packs.SeverityHigh},
 		{"branch force delete -D", "git branch -D feature", "branch-force-delete", packs.SeverityHigh},
+		{"branch force delete protected main", "git branch -D main", "branch-force-delete-protected", packs.SeverityCritical},
+		{"branch force delete protected master", "git branch -D master", "branch-force-delete-protected", packs.SeverityCritical},
+		{"branch force delete protected production", "git branch -D production", "branch-force-delete-protected", packs.SeverityCritical},
+		{"tag delete short", "git tag -d v1.0", "tag-delete", packs.SeverityMedium},
+		{"tag delete long", "git tag --delete v1.1", "tag-delete", packs.SeverityMedium},
 		{"stash drop", "git stash drop", "stash-drop", packs.SeverityMedium},
 		{"stash clear", "git stash clear", "stash-clear", packs.SeverityCritical},
 	}
@@ -78,7 +62,7 @@ func TestCoreGit_PatternRuleIDs(t *testing.T) {
 }
 
 func TestCoreGit_SafePatterns(t *testing.T) {
-	p := getGitPack(t)
+	p := loadPack(t, "core.git")
 
 	safeCmds := []struct {
 		name string
@@ -106,7 +90,7 @@ func TestCoreGit_SafePatterns(t *testing.T) {
 }
 
 func TestCoreGit_FalsePositiveBatch(t *testing.T) {
-	p := getGitPack(t)
+	p := loadPack(t, "core.git")
 
 	allowedCmds := []string{
 		"git status",
@@ -146,7 +130,7 @@ func TestCoreGit_FalsePositiveBatch(t *testing.T) {
 // ----------------------------------------------------------------------------
 
 func TestCoreFilesystem_PatternRuleIDs(t *testing.T) {
-	p := getFilesystemPack(t)
+	p := loadPack(t, "core.filesystem")
 
 	tests := []struct {
 		name     string
@@ -158,6 +142,8 @@ func TestCoreFilesystem_PatternRuleIDs(t *testing.T) {
 		{"rm -rf ~", "rm -rf ~", "rm-rf-root-home", packs.SeverityCritical},
 		{"rm -rf /home", "rm -rf /home", "rm-rf-root-home", packs.SeverityCritical},
 		{"rm -rf /etc", "rm -rf /etc", "rm-rf-root-home", packs.SeverityCritical},
+		{"rm -rf $HOME", "rm -rf $HOME", "rm-rf-root-home", packs.SeverityCritical},
+		{"rm -rf ${HOME}", "rm -rf ${HOME}", "rm-rf-root-home", packs.SeverityCritical},
 		{"rm -rf ./build", "rm -rf ./build", "rm-rf-general", packs.SeverityHigh},
 		{"rm -rf src", "rm -rf src", "rm-rf-general", packs.SeverityHigh},
 		{"rm -fr /", "rm -fr /", "rm-rf-root-home", packs.SeverityCritical},
@@ -180,7 +166,7 @@ func TestCoreFilesystem_PatternRuleIDs(t *testing.T) {
 }
 
 func TestCoreFilesystem_FlagOrderings(t *testing.T) {
-	p := getFilesystemPack(t)
+	p := loadPack(t, "core.filesystem")
 
 	cmds := []string{
 		"rm -rf /important",
@@ -202,7 +188,7 @@ func TestCoreFilesystem_FlagOrderings(t *testing.T) {
 }
 
 func TestCoreFilesystem_SafeTempPaths(t *testing.T) {
-	p := getFilesystemPack(t)
+	p := loadPack(t, "core.filesystem")
 
 	safeCmds := []string{
 		"rm -rf /tmp/mydir",
@@ -224,7 +210,7 @@ func TestCoreFilesystem_SafeTempPaths(t *testing.T) {
 }
 
 func TestCoreFilesystem_PathTraversal(t *testing.T) {
-	p := getFilesystemPack(t)
+	p := loadPack(t, "core.filesystem")
 
 	cmds := []string{
 		"rm -rf /tmp/../etc",
@@ -243,7 +229,7 @@ func TestCoreFilesystem_PathTraversal(t *testing.T) {
 
 // repro_git_bypasses.rs — test long-form flag variants.
 func TestCoreGit_LongFlagBypasses(t *testing.T) {
-	p := getGitPack(t)
+	p := loadPack(t, "core.git")
 
 	tests := []struct {
 		name     string
@@ -270,7 +256,7 @@ func TestCoreGit_LongFlagBypasses(t *testing.T) {
 // TestCoreGit_DashCFlagDoesNotBypass tests that git global flags (-C dir)
 // before the subcommand don't prevent detection.
 func TestCoreGit_DashCFlagDoesNotBypass(t *testing.T) {
-	p := getGitPack(t)
+	p := loadPack(t, "core.git")
 
 	tests := []struct {
 		name string
@@ -294,18 +280,8 @@ func TestCoreGit_DashCFlagDoesNotBypass(t *testing.T) {
 // core.tw
 // ----------------------------------------------------------------------------
 
-func getTWPack(t *testing.T) *packs.Pack {
-	t.Helper()
-	reg := packs.DefaultRegistry()
-	p := reg.Get("core.tw")
-	if p == nil {
-		t.Fatal("core.tw pack not found in registry")
-	}
-	return p
-}
-
 func TestCoreTW_PatternRuleIDs(t *testing.T) {
-	p := getTWPack(t)
+	p := loadPack(t, "core.tw")
 
 	tests := []struct {
 		name     string
@@ -313,14 +289,14 @@ func TestCoreTW_PatternRuleIDs(t *testing.T) {
 		wantName string
 		wantSev  packs.Severity
 	}{
-		{"tw allow session", `tw allow --session "rm -rf /"`, "tw-allow", packs.SeverityCritical},
-		{"tw allow time", `tw allow --time 30m "rm -rf /"`, "tw-allow", packs.SeverityCritical},
-		{"tw allow permanent", `tw allow --permanent "rm -rf /"`, "tw-allow", packs.SeverityCritical},
-		{"tw allow clear", "tw allow --clear", "tw-allow", packs.SeverityCritical},
-		{"tw allow remove", `tw allow --remove "rm -rf"`, "tw-allow", packs.SeverityCritical},
-		{"tw allow bare", "tw allow", "tw-allow", packs.SeverityCritical},
-		{"tw allow with flags", `tw allow --session --rule "core:rm-rf" "rm -rf"`, "tw-allow", packs.SeverityCritical},
-		{"tw allow prefix", `tw allow --permanent --prefix "git push"`, "tw-allow", packs.SeverityCritical},
+		{"tw override add allow session", `tw override add allow --session "rm -rf /"`, "tw-override", packs.SeverityCritical},
+		{"tw override add allow time", `tw override add allow --time 30m "git push --force"`, "tw-override", packs.SeverityCritical},
+		{"tw override add deny permanent", `tw override add deny --permanent "evil-command" --reason "never"`, "tw-override", packs.SeverityCritical},
+		{"tw override add ask rule", `tw override add ask --permanent --rule "core.git:reset-hard" --reason "human review"`, "tw-override", packs.SeverityCritical},
+		{"tw override clear", "tw override clear", "tw-override", packs.SeverityCritical},
+		{"tw override remove", `tw override remove ov-1234`, "tw-override", packs.SeverityCritical},
+		{"tw override bare", "tw override", "tw-override", packs.SeverityCritical},
+		{"tw rule remove", "tw rule remove core.git:reset-hard", "tw-rule-remove", packs.SeverityCritical},
 	}
 
 	for _, tc := range tests {
@@ -340,7 +316,7 @@ func TestCoreTW_PatternRuleIDs(t *testing.T) {
 }
 
 func TestCoreTW_SafePatterns(t *testing.T) {
-	p := getTWPack(t)
+	p := loadPack(t, "core.tw")
 
 	safeCmds := []struct {
 		name string
@@ -359,7 +335,7 @@ func TestCoreTW_SafePatterns(t *testing.T) {
 		{"tw uninstall", "tw uninstall"},
 		{"tw config", "tw config"},
 		{"tw completions", "tw completions"},
-		{"tw allow --list", "tw allow --list"},
+		{"tw override list", "tw override list"},
 	}
 
 	for _, tc := range safeCmds {
@@ -373,7 +349,7 @@ func TestCoreTW_SafePatterns(t *testing.T) {
 }
 
 func TestCoreTW_FalsePositiveBatch(t *testing.T) {
-	p := getTWPack(t)
+	p := loadPack(t, "core.tw")
 
 	allowedCmds := []string{
 		`tw test "rm -rf /"`,
@@ -388,7 +364,7 @@ func TestCoreTW_FalsePositiveBatch(t *testing.T) {
 		"tw install",
 		"tw config",
 		"tw completions bash",
-		"tw allow --list",
+		"tw override list",
 	}
 
 	for _, cmd := range allowedCmds {
@@ -402,19 +378,21 @@ func TestCoreTW_FalsePositiveBatch(t *testing.T) {
 }
 
 func TestCoreTW_OverridesWrite(t *testing.T) {
-	p := getTWPack(t)
+	p := loadPack(t, "core.tw")
 
 	cmds := []struct {
 		name     string
 		cmd      string
 		wantName string
 	}{
-		{"redirect to overrides", `echo '{}' > .tw/overrides.json`, "tw-overrides-write"},
-		{"append to overrides", `echo '{}' >> .tw/overrides.json`, "tw-overrides-write"},
+		{"redirect to overrides", `echo '{}' > .tw/overrides.json`, "tw-overrides-write-redirect"},
+		{"append to overrides", `echo '{}' >> .tw/overrides.json`, "tw-overrides-write-redirect"},
 		{"tee to overrides", `cat foo | tee .tw/overrides.json`, "tw-overrides-write"},
-		{"redirect to allow.key", `echo 'key' > .tw/allow.key`, "tw-allowkey-write"},
-		{"append to allow.key", `echo 'key' >> .tw/allow.key`, "tw-allowkey-write"},
+		{"redirect to allow.key", `echo 'key' > .tw/allow.key`, "tw-allowkey-write-redirect"},
+		{"append to allow.key", `echo 'key' >> .tw/allow.key`, "tw-allowkey-write-redirect"},
 		{"tee to allow.key", `cat foo | tee .tw/allow.key`, "tw-allowkey-write"},
+		{"redirect to rules.json", `echo '{}' > .tw/rules.json`, "tw-rules-write-redirect"},
+		{"tee to rules.json", `cat foo | tee .tw/rules.json`, "tw-rules-write"},
 	}
 
 	for _, tc := range cmds {
@@ -431,7 +409,7 @@ func TestCoreTW_OverridesWrite(t *testing.T) {
 }
 
 func TestCoreFilesystem_FalsePositiveBatch(t *testing.T) {
-	p := getFilesystemPack(t)
+	p := loadPack(t, "core.filesystem")
 
 	allowedCmds := []string{
 		"ls -la",
