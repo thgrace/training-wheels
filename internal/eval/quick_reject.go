@@ -16,44 +16,110 @@ type PackKeywords struct {
 // EnabledKeywordIndex is built once at startup from the enabled packs' keyword
 // lists and reused for every command evaluation.
 type EnabledKeywordIndex struct {
-	ac           *ahocorasick.AhoCorasick
-	keywords     []string    // keyword for each pattern index (used for boundary check)
-	patternMasks [][2]uint64 // pattern index → pack bitmask
-	fullMask     [2]uint64   // OR of all pack masks
+	ac             *ahocorasick.AhoCorasick
+	keywords       []string   // keyword for each pattern index (used for boundary check)
+	patternMasks   []packMask // pattern index → pack bitmask
+	fullMask       packMask   // OR of all pack masks
+	noKeywordsMask packMask   // bits for packs with zero keywords (always candidates)
 }
 
-// maxPacks is the maximum number of packs supported by the [2]uint64 bitmask.
-// To support more packs, widen the array (e.g. [4]uint64 for 256 packs) and
-// update isBitSet in evaluator.go accordingly.
-const maxPacks = 128
+type packMask struct {
+	words []uint64
+}
+
+func newPackMask(size int) packMask {
+	if size <= 0 {
+		return packMask{}
+	}
+	return packMask{words: make([]uint64, (size+63)/64)}
+}
+
+func (m packMask) set(i int) {
+	if i < 0 {
+		return
+	}
+	word := i / 64
+	if word >= len(m.words) {
+		return
+	}
+	m.words[word] |= uint64(1) << (i % 64)
+}
+
+func (m packMask) isSet(i int) bool {
+	if i < 0 {
+		return false
+	}
+	word := i / 64
+	if word >= len(m.words) {
+		return false
+	}
+	return m.words[word]&(uint64(1)<<(i%64)) != 0
+}
+
+func (m packMask) or(other packMask) {
+	for i := range m.words {
+		m.words[i] |= other.words[i]
+	}
+}
+
+func (m packMask) isZero() bool {
+	for _, word := range m.words {
+		if word != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (m packMask) equals(other packMask) bool {
+	if len(m.words) != len(other.words) {
+		return false
+	}
+	for i := range m.words {
+		if m.words[i] != other.words[i] {
+			return false
+		}
+	}
+	return true
+}
 
 // NewEnabledKeywordIndex builds the index from a slice of (packIndex, keywords) pairs.
 func NewEnabledKeywordIndex(packs []PackKeywords) *EnabledKeywordIndex {
-	var fullMask [2]uint64
+	maskSize := len(packs)
+	for _, pk := range packs {
+		if pk.PackIndex+1 > maskSize {
+			maskSize = pk.PackIndex + 1
+		}
+	}
+	fullMask := newPackMask(maskSize)
+	noKeywordsMask := newPackMask(maskSize)
 
 	// Map keyword to merged bitmask. This ensures that if multiple packs
 	// share a keyword (e.g. "rm"), all of them are considered as candidates.
-	mergedMasks := make(map[string][2]uint64)
+	mergedMasks := make(map[string]packMask)
 
 	for _, pk := range packs {
-		if pk.PackIndex >= maxPacks {
-			continue // silently skip — fail-open; see maxPacks comment
+		fullMask.set(pk.PackIndex)
+
+		if len(pk.Keywords) == 0 {
+			// Packs with no keywords can't be quick-rejected — always candidates.
+			noKeywordsMask.set(pk.PackIndex)
 		}
-		word := pk.PackIndex / 64
-		bit := uint64(1) << (pk.PackIndex % 64)
-		fullMask[word] |= bit
 
 		for _, kw := range pk.Keywords {
 			kw = strings.ToLower(kw)
 			m := mergedMasks[kw]
-			m[word] |= bit
+			if len(m.words) == 0 {
+				m = newPackMask(maskSize)
+			}
+			m.set(pk.PackIndex)
 			mergedMasks[kw] = m
 		}
 	}
 
-	var patterns []string
-	var keywords []string
-	var masks [][2]uint64
+	patterns := make([]string, 0, len(mergedMasks))
+	keywords := make([]string, 0, len(mergedMasks))
+	masks := make([]packMask, 0, len(mergedMasks))
 
 	// We need a stable order for patterns to match them back to masks.
 	// Map iteration is random, but that's fine as long as we build
@@ -65,9 +131,10 @@ func NewEnabledKeywordIndex(packs []PackKeywords) *EnabledKeywordIndex {
 	}
 
 	idx := &EnabledKeywordIndex{
-		keywords:     keywords,
-		patternMasks: masks,
-		fullMask:     fullMask,
+		keywords:       keywords,
+		patternMasks:   masks,
+		fullMask:       fullMask,
+		noKeywordsMask: noKeywordsMask,
 	}
 
 	if len(patterns) > 0 {
@@ -86,9 +153,14 @@ func NewEnabledKeywordIndex(packs []PackKeywords) *EnabledKeywordIndex {
 // Returns rejected=true if no keywords matched (caller should allow).
 // Matches are word-boundary-aware: a keyword like "git" won't match inside
 // "digit" because the preceding character is a word character.
-func (idx *EnabledKeywordIndex) QuickReject(cmd string) (rejected bool, candidateMask [2]uint64) {
+func (idx *EnabledKeywordIndex) QuickReject(cmd string) (rejected bool, candidateMask packMask) {
 	if idx.ac == nil {
-		return true, [2]uint64{}
+		// If there are no keywords indexed, only reject if there are also no
+		// packs that have zero keywords (noKeywordsMask).
+		if idx.noKeywordsMask.isZero() {
+			return true, packMask{}
+		}
+		return false, idx.noKeywordsMask
 	}
 
 	// Lowercase the command for word-boundary checks. Keywords are lowercased
@@ -98,7 +170,7 @@ func (idx *EnabledKeywordIndex) QuickReject(cmd string) (rejected bool, candidat
 	// the original command — so this is safe and correct.
 	lowerCmd := strings.ToLower(cmd)
 	iter := idx.ac.IterOverlapping(lowerCmd)
-	var mask [2]uint64
+	mask := newPackMask(len(idx.fullMask.words) * 64)
 
 	for next := iter.Next(); next != nil; next = iter.Next() {
 		patIdx := next.Pattern()
@@ -116,16 +188,18 @@ func (idx *EnabledKeywordIndex) QuickReject(cmd string) (rejected bool, candidat
 			continue
 		}
 
-		mask[0] |= idx.patternMasks[patIdx][0]
-		mask[1] |= idx.patternMasks[patIdx][1]
+		mask.or(idx.patternMasks[patIdx])
 
 		// Early exit if all packs are candidates.
-		if mask == idx.fullMask {
+		if mask.equals(idx.fullMask) {
 			break
 		}
 	}
 
-	if mask == [2]uint64{} {
+	// Always include packs with no keywords — they can't be quick-rejected.
+	mask.or(idx.noKeywordsMask)
+
+	if mask.isZero() {
 		return true, mask
 	}
 	return false, mask

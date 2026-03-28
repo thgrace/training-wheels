@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/eval"
 	"github.com/thgrace/training-wheels/internal/override"
 	"github.com/thgrace/training-wheels/internal/packs"
+	"github.com/thgrace/training-wheels/internal/session"
 )
 
 func newTestEvaluator() *eval.Evaluator {
@@ -52,30 +52,27 @@ func TestEvaluateCommand_EmptyCommand(t *testing.T) {
 	}
 }
 
-func TestEvaluateCommand_OverrideDenyExact(t *testing.T) {
+func TestEvaluateCommand_OverrideDenyIgnoredExact(t *testing.T) {
 	e := newTestEvaluator()
 	ov := &override.Overrides{}
 	ov.Add(override.ActionDeny, override.SelectorExact, "evil-command --flag", "dangerous")
 	e.SetOverrides(ov, nil)
 
 	result := e.Evaluate(context.Background(), "evil-command --flag")
-	if result.Decision != eval.DecisionDeny {
-		t.Errorf("expected Deny from deny override, got %v", result.Decision)
-	}
-	if result.PatternInfo == nil || result.PatternInfo.Source != eval.SourceOverrideDeny {
-		t.Error("expected SourceOverrideDeny")
+	if result.Decision != eval.DecisionAllow {
+		t.Errorf("expected Allow (deny overrides are ignored), got %v", result.Decision)
 	}
 }
 
-func TestEvaluateCommand_OverrideDenyPrefix(t *testing.T) {
+func TestEvaluateCommand_OverrideDenyIgnoredPrefix(t *testing.T) {
 	e := newTestEvaluator()
 	ov := &override.Overrides{}
 	ov.Add(override.ActionDeny, override.SelectorPrefix, "evil-command", "dangerous")
 	e.SetOverrides(ov, nil)
 
 	result := e.Evaluate(context.Background(), "evil-command --flag")
-	if result.Decision != eval.DecisionDeny {
-		t.Errorf("expected Deny from deny prefix override, got %v", result.Decision)
+	if result.Decision != eval.DecisionAllow {
+		t.Errorf("expected Allow (deny overrides are ignored), got %v", result.Decision)
 	}
 }
 
@@ -106,6 +103,64 @@ func TestEvaluateCommand_OverrideAllowRule(t *testing.T) {
 	}
 }
 
+func TestEvaluateCommand_OverrideDenyIgnoredRule(t *testing.T) {
+	e := newTestEvaluator()
+	ov := &override.Overrides{}
+	ov.Add(override.ActionDeny, override.SelectorRule, "core.git:reset-hard", "Never do this")
+	e.SetOverrides(ov, nil)
+
+	// Deny override is ignored; the command is still denied by the pack pattern.
+	result := e.Evaluate(context.Background(), "git reset --hard")
+	if result.Decision != eval.DecisionDeny {
+		t.Fatalf("expected Deny from pack pattern, got %v", result.Decision)
+	}
+	if result.PatternInfo == nil || result.PatternInfo.Source != eval.SourcePack {
+		t.Fatalf("expected SourcePack (not override), got %+v", result.PatternInfo)
+	}
+	if result.PatternInfo.PackID != "core.git" {
+		t.Errorf("PackID = %q, want core.git", result.PatternInfo.PackID)
+	}
+}
+
+func TestEvaluateCommand_OverrideAskExact(t *testing.T) {
+	e := newTestEvaluator()
+	ov := &override.Overrides{}
+	ov.Add(override.ActionAsk, override.SelectorExact, "git push --force", "Require confirmation")
+	e.SetOverrides(ov, nil)
+
+	result := e.Evaluate(context.Background(), "git push --force")
+	if result.Decision != eval.DecisionAsk {
+		t.Fatalf("expected Ask for exact ask override, got %v", result.Decision)
+	}
+	if result.OverrideEntry == nil || result.OverrideEntry.Action != "ask" {
+		t.Fatalf("expected ask override entry, got %+v", result.OverrideEntry)
+	}
+	if result.PatternInfo == nil || result.PatternInfo.Source != eval.SourceOverrideAsk {
+		t.Fatalf("expected SourceOverrideAsk, got %+v", result.PatternInfo)
+	}
+}
+
+func TestEvaluateCommand_OverrideAskRule(t *testing.T) {
+	e := newTestEvaluator()
+	ov := &override.Overrides{}
+	ov.Add(override.ActionAsk, override.SelectorRule, "core.git:reset-hard", "Require confirmation")
+	e.SetOverrides(ov, nil)
+
+	result := e.Evaluate(context.Background(), "git reset --hard")
+	if result.Decision != eval.DecisionAsk {
+		t.Fatalf("expected Ask for rule ask override, got %v", result.Decision)
+	}
+	if result.OverrideEntry == nil || result.OverrideEntry.Action != "ask" {
+		t.Fatalf("expected ask override entry, got %+v", result.OverrideEntry)
+	}
+	if result.PatternInfo == nil || result.PatternInfo.Source != eval.SourceOverrideAsk {
+		t.Fatalf("expected SourceOverrideAsk, got %+v", result.PatternInfo)
+	}
+	if result.PatternInfo.RuleID != "core.git:reset-hard" {
+		t.Fatalf("rule id = %q, want core.git:reset-hard", result.PatternInfo.RuleID)
+	}
+}
+
 func TestEvaluateCommand_OverrideAllowDoesNotAffectOthers(t *testing.T) {
 	e := newTestEvaluator()
 	ov := &override.Overrides{}
@@ -116,6 +171,25 @@ func TestEvaluateCommand_OverrideAllowDoesNotAffectOthers(t *testing.T) {
 	result := e.Evaluate(context.Background(), "rm -rf /")
 	if result.Decision != eval.DecisionDeny {
 		t.Errorf("expected Deny for non-overridden command, got %v", result.Decision)
+	}
+}
+
+func TestEvaluateCommand_OverridePrecedenceAskBeforeAllow(t *testing.T) {
+	e := newTestEvaluator()
+	ov := &override.Overrides{}
+	ov.Add(override.ActionAllow, override.SelectorRule, "core.git:reset-hard", "allow")
+	ov.Add(override.ActionAsk, override.SelectorRule, "core.git:reset-hard", "ask")
+	ov.Add(override.ActionDeny, override.SelectorRule, "core.git:reset-hard", "deny")
+	e.SetOverrides(ov, nil)
+
+	// Deny override is ignored. The pack matches core.git:reset-hard, then
+	// post-pack override ask (checked before allow) wins.
+	result := e.Evaluate(context.Background(), "git reset --hard")
+	if result.Decision != eval.DecisionAsk {
+		t.Fatalf("expected Ask (ask override wins over allow), got %v", result.Decision)
+	}
+	if result.OverrideEntry == nil || result.OverrideEntry.Action != "ask" {
+		t.Fatalf("expected ask override entry, got %+v", result.OverrideEntry)
 	}
 }
 
@@ -191,6 +265,25 @@ func TestEvaluateCommand_AllPacks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestEvaluateCommand_SessionAsk(t *testing.T) {
+	e := newTestEvaluator()
+	secret := []byte("test-secret-key-32-bytes-long!!")
+	sa := &session.Allowlist{}
+	sa.Add(secret, "ask", "exact", "git push --force", "session ask", time.Time{})
+	e.SetSessionAllows(sa)
+
+	result := e.Evaluate(context.Background(), "git push --force")
+	if result.Decision != eval.DecisionAsk {
+		t.Fatalf("expected Ask for session ask override, got %v", result.Decision)
+	}
+	if result.SessionEntry == nil || result.SessionEntry.Action != "ask" {
+		t.Fatalf("expected ask session entry, got %+v", result.SessionEntry)
+	}
+	if result.PatternInfo == nil || result.PatternInfo.Source != eval.SourceSessionAllow {
+		t.Fatalf("expected SourceSessionAllow, got %+v", result.PatternInfo)
 	}
 }
 

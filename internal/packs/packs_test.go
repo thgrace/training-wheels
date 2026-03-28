@@ -4,10 +4,28 @@ import (
 	"testing"
 
 	"github.com/thgrace/training-wheels/internal/packs"
+	"github.com/thgrace/training-wheels/internal/packs/allpacks"
 )
+
+// loadPack is a helper to load a pack from the registry for testing.
+func loadPack(t *testing.T, id string) *packs.Pack {
+	t.Helper()
+	reg := packs.DefaultRegistry()
+	if reg.Count() == 0 {
+		allpacks.RegisterAll(reg)
+	}
+	p := reg.Get(id)
+	if p == nil {
+		t.Fatalf("pack %q not found in registry", id)
+	}
+	return p
+}
 
 func TestRegistryCount(t *testing.T) {
 	reg := packs.DefaultRegistry()
+	if reg.Count() == 0 {
+		allpacks.RegisterAll(reg)
+	}
 	count := reg.Count()
 	if count < 80 {
 		t.Fatalf("expected at least 80 registered packs, got %d", count)
@@ -16,11 +34,7 @@ func TestRegistryCount(t *testing.T) {
 }
 
 func TestGitPackBlocks(t *testing.T) {
-	reg := packs.DefaultRegistry()
-	p := reg.Get("core.git")
-	if p == nil {
-		t.Fatal("core.git pack not found")
-	}
+	p := loadPack(t, "core.git")
 
 	// Should block git reset --hard
 	m := p.Check("git reset --hard HEAD")
@@ -37,11 +51,7 @@ func TestGitPackBlocks(t *testing.T) {
 }
 
 func TestFilesystemPackBlocks(t *testing.T) {
-	reg := packs.DefaultRegistry()
-	p := reg.Get("core.filesystem")
-	if p == nil {
-		t.Fatal("core.filesystem pack not found")
-	}
+	p := loadPack(t, "core.filesystem")
 
 	// Should block rm -rf /
 	m := p.Check("rm -rf /")
@@ -59,6 +69,9 @@ func TestFilesystemPackBlocks(t *testing.T) {
 
 func TestAllPacksLoadable(t *testing.T) {
 	reg := packs.DefaultRegistry()
+	if reg.Count() == 0 {
+		allpacks.RegisterAll(reg)
+	}
 	ids := reg.AllIDs()
 	for _, id := range ids {
 		p := reg.Get(id)
@@ -69,9 +82,9 @@ func TestAllPacksLoadable(t *testing.T) {
 		if p.Name == "" {
 			t.Errorf("pack %s has empty Name", id)
 		}
-		// Verify at least destructive patterns exist (all packs should have some)
-		if len(p.DestructivePatterns) == 0 {
-			t.Errorf("pack %s has no destructive patterns", id)
+		// Verify at least structural patterns exist (all packs should have some).
+		if len(p.StructuralPatterns) == 0 {
+			t.Errorf("pack %s has no structural patterns", id)
 		}
 	}
 	t.Logf("all %d packs loaded successfully", len(ids))
@@ -79,6 +92,9 @@ func TestAllPacksLoadable(t *testing.T) {
 
 func TestCategoryExpansion(t *testing.T) {
 	reg := packs.DefaultRegistry()
+	if reg.Count() == 0 {
+		allpacks.RegisterAll(reg)
+	}
 	expanded := reg.ExpandEnabled([]string{"database"})
 	if len(expanded) < 4 {
 		t.Fatalf("expected at least 4 database sub-packs, got %d: %v", len(expanded), expanded)

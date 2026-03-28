@@ -10,175 +10,153 @@
         "ses",
         "sesv2"
       ],
-      "safe_patterns": [
-        {
-          "name": "ses-list-identities",
-          "regex": "\\baws\\s+ses\\s+list-identities\\b"
-        },
-        {
-          "name": "ses-list-templates",
-          "regex": "\\baws\\s+ses\\s+list-templates\\b"
-        },
-        {
-          "name": "ses-list-configuration-sets",
-          "regex": "\\baws\\s+ses\\s+list-configuration-sets\\b"
-        },
-        {
-          "name": "ses-list-receipt-rules",
-          "regex": "\\baws\\s+ses\\s+list-receipt-rules\\b"
-        },
-        {
-          "name": "ses-list-receipt-rule-sets",
-          "regex": "\\baws\\s+ses\\s+list-receipt-rule-sets\\b"
-        },
-        {
-          "name": "ses-get-identity-verification-attributes",
-          "regex": "\\baws\\s+ses\\s+get-identity-verification-attributes\\b"
-        },
-        {
-          "name": "ses-get-identity-dkim-attributes",
-          "regex": "\\baws\\s+ses\\s+get-identity-dkim-attributes\\b"
-        },
-        {
-          "name": "ses-get-identity-notification-attributes",
-          "regex": "\\baws\\s+ses\\s+get-identity-notification-attributes\\b"
-        },
-        {
-          "name": "ses-get-template",
-          "regex": "\\baws\\s+ses\\s+get-template\\b"
-        },
-        {
-          "name": "ses-describe-configuration-set",
-          "regex": "\\baws\\s+ses\\s+describe-configuration-set\\b"
-        },
-        {
-          "name": "ses-describe-receipt-rule",
-          "regex": "\\baws\\s+ses\\s+describe-receipt-rule\\b"
-        },
-        {
-          "name": "ses-describe-receipt-rule-set",
-          "regex": "\\baws\\s+ses\\s+describe-receipt-rule-set\\b"
-        },
-        {
-          "name": "ses-get-send-quota",
-          "regex": "\\baws\\s+ses\\s+get-send-quota\\b"
-        },
-        {
-          "name": "ses-get-send-statistics",
-          "regex": "\\baws\\s+ses\\s+get-send-statistics\\b"
-        },
-        {
-          "name": "sesv2-list-email-identities",
-          "regex": "\\baws\\s+sesv2\\s+list-email-identities\\b"
-        },
-        {
-          "name": "sesv2-list-email-templates",
-          "regex": "\\baws\\s+sesv2\\s+list-email-templates\\b"
-        },
-        {
-          "name": "sesv2-list-configuration-sets",
-          "regex": "\\baws\\s+sesv2\\s+list-configuration-sets\\b"
-        },
-        {
-          "name": "sesv2-list-contact-lists",
-          "regex": "\\baws\\s+sesv2\\s+list-contact-lists\\b"
-        },
-        {
-          "name": "sesv2-list-dedicated-ip-pools",
-          "regex": "\\baws\\s+sesv2\\s+list-dedicated-ip-pools\\b"
-        },
-        {
-          "name": "sesv2-get-email-identity",
-          "regex": "\\baws\\s+sesv2\\s+get-email-identity\\b"
-        },
-        {
-          "name": "sesv2-get-email-template",
-          "regex": "\\baws\\s+sesv2\\s+get-email-template\\b"
-        },
-        {
-          "name": "sesv2-get-configuration-set",
-          "regex": "\\baws\\s+sesv2\\s+get-configuration-set\\b"
-        },
-        {
-          "name": "sesv2-get-contact-list",
-          "regex": "\\baws\\s+sesv2\\s+get-contact-list\\b"
-        },
-        {
-          "name": "sesv2-get-dedicated-ip-pool",
-          "regex": "\\baws\\s+sesv2\\s+get-dedicated-ip-pool\\b"
-        },
-        {
-          "name": "sesv2-get-account",
-          "regex": "\\baws\\s+sesv2\\s+get-account\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "ses-delete-identity",
-          "regex": "\\baws\\s+ses\\s+delete-identity\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "ses",
+              "delete-identity"
+            ]
+          },
           "reason": "aws ses delete-identity removes a verified email identity.",
           "severity": "high",
           "explanation": "Deleting a verified identity prevents sending from that address or domain. Applications using this identity will fail to send emails. Re-verification requires DNS changes and propagation time.\n\nSafer alternatives:\n- aws ses list-identities: Review identities first\n- Check which applications use this identity\n- Create new identity before deleting old one"
         },
         {
           "name": "ses-delete-template",
-          "regex": "\\baws\\s+ses\\s+delete-template\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "ses",
+              "delete-template"
+            ]
+          },
           "reason": "aws ses delete-template removes an email template.",
           "severity": "medium",
           "explanation": "Deleting a template breaks any applications that reference it. Emails using this template will fail to send until the template is recreated.\n\nSafer alternatives:\n- aws ses get-template: Export template before deletion\n- Verify no active campaigns use this template\n- Create replacement template before deleting"
         },
         {
           "name": "ses-delete-configuration-set",
-          "regex": "\\baws\\s+ses\\s+delete-configuration-set\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "ses",
+              "delete-configuration-set"
+            ]
+          },
           "reason": "aws ses delete-configuration-set removes a configuration set.",
           "severity": "high",
           "explanation": "Deleting a configuration set removes tracking and event destinations. Applications using this set will lose metrics, bounce handling, and complaint processing.\n\nSafer alternatives:\n- aws ses describe-configuration-set: Review configuration\n- Migrate applications to a new configuration set first\n- Document event destinations before deletion"
         },
         {
           "name": "ses-delete-receipt-rule-set",
-          "regex": "\\baws\\s+ses\\s+delete-receipt-rule-set\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "ses",
+              "delete-receipt-rule-set"
+            ]
+          },
           "reason": "aws ses delete-receipt-rule-set removes a receipt rule set.",
           "severity": "critical",
           "explanation": "Deleting a receipt rule set stops all email receiving configured by that set. Incoming emails may bounce or be lost. This affects all receipt rules in the set.\n\nSafer alternatives:\n- aws ses describe-receipt-rule-set: Review rules first\n- Create replacement rule set before deletion\n- Test with a non-active rule set"
         },
         {
           "name": "ses-delete-receipt-rule",
-          "regex": "\\baws\\s+ses\\s+delete-receipt-rule(?:\\s|$)",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "ses",
+              "delete-receipt-rule"
+            ]
+          },
           "reason": "aws ses delete-receipt-rule removes a receipt rule.",
           "severity": "high",
           "explanation": "Deleting a receipt rule changes how incoming emails are processed. Actions like S3 storage, Lambda triggers, or SNS notifications will stop for matching emails.\n\nSafer alternatives:\n- aws ses describe-receipt-rule: Review rule configuration\n- Disable the rule before deleting\n- Ensure no critical workflows depend on this rule"
         },
         {
           "name": "sesv2-delete-email-identity",
-          "regex": "\\baws\\s+sesv2\\s+delete-email-identity\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sesv2",
+              "delete-email-identity"
+            ]
+          },
           "reason": "aws sesv2 delete-email-identity removes a verified email identity.",
           "severity": "high",
           "explanation": "Deleting a verified identity prevents sending from that address or domain. DKIM and SPF records become orphaned. Applications will fail until a new identity is verified.\n\nSafer alternatives:\n- aws sesv2 get-email-identity: Review identity configuration\n- Verify replacement identity before deletion\n- Update applications to use new identity first"
         },
         {
           "name": "sesv2-delete-email-template",
-          "regex": "\\baws\\s+sesv2\\s+delete-email-template\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sesv2",
+              "delete-email-template"
+            ]
+          },
           "reason": "aws sesv2 delete-email-template removes an email template.",
           "severity": "medium",
           "explanation": "Deleting a template breaks any send operations referencing it. Bulk email sends and transactional emails using this template will fail.\n\nSafer alternatives:\n- aws sesv2 get-email-template: Export template content\n- Check for active campaigns using this template\n- Version templates rather than deleting"
         },
         {
           "name": "sesv2-delete-configuration-set",
-          "regex": "\\baws\\s+sesv2\\s+delete-configuration-set\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sesv2",
+              "delete-configuration-set"
+            ]
+          },
           "reason": "aws sesv2 delete-configuration-set removes a configuration set.",
           "severity": "high",
           "explanation": "Deleting a configuration set removes all event destinations, tracking options, and delivery settings. Applications using this set lose visibility into email delivery.\n\nSafer alternatives:\n- aws sesv2 get-configuration-set: Export configuration\n- Migrate to new configuration set first\n- Document all event destinations"
         },
         {
           "name": "sesv2-delete-contact-list",
-          "regex": "\\baws\\s+sesv2\\s+delete-contact-list\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sesv2",
+              "delete-contact-list"
+            ]
+          },
           "reason": "aws sesv2 delete-contact-list removes a contact list.",
           "severity": "high",
           "explanation": "Deleting a contact list permanently removes all contacts and their preferences. Subscription management and list-based sending will fail. This cannot be undone.\n\nSafer alternatives:\n- Export contact list data before deletion\n- Check for active campaigns using this list\n- Use list segmentation instead of deletion"
         },
         {
           "name": "sesv2-delete-dedicated-ip-pool",
-          "regex": "\\baws\\s+sesv2\\s+delete-dedicated-ip-pool\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "sesv2",
+              "delete-dedicated-ip-pool"
+            ]
+          },
           "reason": "aws sesv2 delete-dedicated-ip-pool removes a dedicated IP pool.",
           "severity": "critical",
           "explanation": "Deleting a dedicated IP pool releases the IPs back to the shared pool. Email reputation built on these IPs is lost. Configuration sets using this pool will fall back to shared IPs.\n\nSafer alternatives:\n- Migrate configuration sets to a new pool first\n- Document IP addresses and reputation metrics\n- Contact AWS support if IPs need to be preserved"
@@ -193,60 +171,91 @@
         "sendgrid",
         "api.sendgrid.com"
       ],
-      "safe_patterns": [],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "sendgrid-delete-template",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/templates/|sendgrid\\.com/v3/templates/\\S+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid /v3/templates removes a transactional template.",
           "severity": "high",
           "explanation": "Deleting a template breaks any email sends referencing that template ID. Applications will receive errors when trying to send with a deleted template. All versions of the template are removed.\n\nSafer alternatives:\n- GET /v3/templates/{id}: Export template before deletion\n- Create a new version instead of deleting\n- Check email code for template ID references"
         },
         {
           "name": "sendgrid-delete-api-key",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/api_keys/|sendgrid\\.com/v3/api_keys/\\S+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid /v3/api_keys removes an API key.",
           "severity": "critical",
           "explanation": "Deleting an API key immediately revokes access. All applications using this key will fail to authenticate. You cannot recover the key value after deletion.\n\nSafer alternatives:\n- Create new API key before deleting old one\n- Update applications with new key first\n- Use API key scopes to limit damage"
         },
         {
           "name": "sendgrid-delete-whitelabel-domain",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/whitelabel/domains/|sendgrid\\.com/v3/whitelabel/domains/\\d+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid /v3/whitelabel/domains removes domain authentication.",
           "severity": "critical",
           "explanation": "Deleting domain authentication removes DKIM and SPF records. Emails sent from this domain will fail authentication checks, leading to delivery issues and potential spam classification.\n\nSafer alternatives:\n- Document DNS records before deletion\n- Verify new domain authentication is working\n- Plan for DNS propagation delays"
         },
         {
           "name": "sendgrid-delete-sender",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/(?:senders|verified_senders)/|sendgrid\\.com/v3/(?:senders|verified_senders)/\\d+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid /v3/senders or /v3/verified_senders removes a sender identity.",
           "severity": "high",
           "explanation": "Deleting a sender identity prevents sending from that email address. Marketing campaigns and transactional emails using this sender will fail. Re-verification may require email confirmation.\n\nSafer alternatives:\n- Create new sender identity before deleting\n- Update email configurations first\n- Check for scheduled campaigns using this sender"
         },
         {
           "name": "sendgrid-delete-teammate",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/teammates/|sendgrid\\.com/v3/teammates/\\w+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid /v3/teammates removes a teammate from the account.",
           "severity": "medium",
           "explanation": "Deleting a teammate revokes their access to the SendGrid account. They lose access to templates, statistics, and settings they may have been managing.\n\nSafer alternatives:\n- Change teammate permissions instead of deleting\n- Ensure knowledge transfer is complete\n- Verify teammate doesn't own critical configurations"
         },
         {
           "name": "sendgrid-delete-suppression",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/(?:suppression|asm)/",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid suppression endpoints removes entries from suppression lists.",
           "severity": "high",
           "explanation": "Removing suppression entries allows emails to be sent to addresses that previously bounced, complained, or unsubscribed. This can damage sender reputation and violate CAN-SPAM compliance.\n\nSafer alternatives:\n- Verify the email address is valid before removing\n- Check bounce reason codes\n- Respect unsubscribe requests (may be legally required)"
         },
         {
           "name": "sendgrid-delete-webhook",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/user/webhooks/",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid /v3/user/webhooks removes a webhook configuration.",
           "severity": "medium",
           "explanation": "Deleting a webhook stops event notifications to your application. Bounce handling, open tracking, and click tracking data will not be received. This can affect email analytics and automation.\n\nSafer alternatives:\n- Document webhook URL and event types\n- Test new webhook before removing old one\n- Verify no critical automations depend on events"
         },
         {
           "name": "sendgrid-delete-subuser",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*sendgrid\\.com/v3/subusers/|sendgrid\\.com/v3/subusers/\\w+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "sendgrid"
+            ]
+          },
           "reason": "DELETE to SendGrid /v3/subusers removes a subuser account.",
           "severity": "critical",
           "explanation": "Deleting a subuser removes all their data including templates, statistics, and API keys. Applications using subuser credentials will fail immediately. This cannot be undone.\n\nSafer alternatives:\n- Export subuser data and configurations\n- Migrate to new subuser before deleting\n- Disable subuser access instead of deleting"
@@ -261,60 +270,91 @@
         "mailgun",
         "api.mailgun.net"
       ],
-      "safe_patterns": [],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "mailgun-delete-domain",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/domains/[^\\s/]+(?:\\s|$)|api\\.mailgun\\.net/v3/domains/[^\\s/]+(?:\\s|$).*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun /v3/domains removes a domain configuration.",
           "severity": "critical",
           "explanation": "Deleting a domain removes all DNS settings, DKIM keys, tracking configuration, and sending capability. All applications using this domain will fail to send emails. Re-adding requires DNS verification.\n\nSafer alternatives:\n- Export domain settings and DNS records\n- Disable domain instead of deleting\n- Verify no production systems use this domain"
         },
         {
           "name": "mailgun-delete-route",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/routes/|api\\.mailgun\\.net/v3/routes/\\w+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun /v3/routes removes an email route.",
           "severity": "high",
           "explanation": "Deleting a route stops email forwarding, storage, or webhook delivery for matching messages. Incoming emails matching this route will not be processed as expected.\n\nSafer alternatives:\n- Document route expression and actions\n- Disable route before deleting\n- Test with lower priority route first"
         },
         {
           "name": "mailgun-delete-list",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/lists/|api\\.mailgun\\.net/v3/lists/[^\\s/]+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun /v3/lists removes a mailing list.",
           "severity": "high",
           "explanation": "Deleting a mailing list removes all members and subscription data permanently. Applications sending to this list will receive errors. Member preferences and history are lost.\n\nSafer alternatives:\n- Export list members before deletion\n- Archive list rather than deleting\n- Check for scheduled campaigns to this list"
         },
         {
           "name": "mailgun-delete-template",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/[^/]+/templates/|api\\.mailgun\\.net/v3/[^/]+/templates/\\w+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun templates endpoint removes an email template.",
           "severity": "medium",
           "explanation": "Deleting a template breaks email sends that reference it. Applications will receive errors when attempting to use the deleted template. All versions are removed.\n\nSafer alternatives:\n- GET template to export content first\n- Create new version instead of deleting\n- Search codebase for template name references"
         },
         {
           "name": "mailgun-delete-webhook",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/domains/[^/]+/webhooks/|api\\.mailgun\\.net/v3/domains/[^/]+/webhooks/\\w+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun webhooks endpoint removes a webhook.",
           "severity": "medium",
           "explanation": "Deleting a webhook stops event delivery to your application. Bounce, complaint, delivery, open, and click notifications will not be received. This affects analytics and automation.\n\nSafer alternatives:\n- Document webhook URL and events\n- Configure new webhook before removing old\n- Verify no critical processes depend on events"
         },
         {
           "name": "mailgun-delete-credential",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/domains/[^/]+/credentials/|api\\.mailgun\\.net/v3/domains/[^/]+/credentials/[^\\s/]+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun credentials endpoint removes SMTP credentials.",
           "severity": "high",
           "explanation": "Deleting SMTP credentials immediately revokes access. Applications using these credentials for SMTP authentication will fail to send. The credential cannot be recovered.\n\nSafer alternatives:\n- Create new credentials before deleting old ones\n- Update application configurations first\n- Use API keys where possible for better management"
         },
         {
           "name": "mailgun-delete-tag",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/[^/]+/tags/|api\\.mailgun\\.net/v3/[^/]+/tags/\\w+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun tags endpoint removes a tag.",
           "severity": "low",
           "explanation": "Deleting a tag removes the grouping but does not affect sent emails. Statistics associated with this tag will no longer be queryable. This is relatively safe but can affect reporting.\n\nSafer alternatives:\n- Export tag statistics before deletion\n- Rename tag instead of deleting\n- Use new tags for new campaigns"
         },
         {
           "name": "mailgun-delete-suppression",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.mailgun\\.net/v3/[^/]+/(?:bounces|complaints|unsubscribes)/",
+          "when": {
+            "command": [
+              "mailgun"
+            ]
+          },
           "reason": "DELETE to Mailgun suppression endpoints removes suppression entries.",
           "severity": "high",
           "explanation": "Removing suppression entries allows emails to addresses that previously bounced, complained, or unsubscribed. This damages sender reputation and may violate anti-spam regulations.\n\nSafer alternatives:\n- Verify address validity before removing bounce\n- Never remove complaint or unsubscribe entries\n- Use email verification services for bounced addresses"
@@ -329,53 +369,80 @@
         "postmarkapp",
         "api.postmarkapp.com"
       ],
-      "safe_patterns": [],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "postmark-delete-server",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.postmarkapp\\.com/servers/|api\\.postmarkapp\\.com/servers/\\d+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "postmarkapp"
+            ]
+          },
           "reason": "DELETE to Postmark /servers removes a server configuration.",
           "severity": "critical",
           "explanation": "Deleting a Postmark server removes all associated templates, message streams, webhooks, and statistics. All applications using this server's API tokens will fail to send emails. Server tokens cannot be recovered.\n\nSafer alternatives:\n- GET /servers/{id}: Export server configuration\n- GET /templates: Export all templates first\n- Create new server and migrate before deleting"
         },
         {
           "name": "postmark-delete-template",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.postmarkapp\\.com/templates/|api\\.postmarkapp\\.com/templates/[^\\s/]+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "postmarkapp"
+            ]
+          },
           "reason": "DELETE to Postmark /templates removes an email template.",
           "severity": "medium",
           "explanation": "Deleting a Postmark template breaks any email sends referencing that template ID or alias. Applications will receive errors when attempting to send with the deleted template. Template content cannot be recovered.\n\nSafer alternatives:\n- GET /templates/{id}: Export template content first\n- Create a new template version instead of deleting\n- Search codebase for template ID/alias references"
         },
         {
           "name": "postmark-delete-domain",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.postmarkapp\\.com/domains/|api\\.postmarkapp\\.com/domains/\\d+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "postmarkapp"
+            ]
+          },
           "reason": "DELETE to Postmark /domains removes a domain configuration.",
           "severity": "critical",
           "explanation": "Deleting a Postmark domain removes DKIM keys and domain verification. Emails sent from this domain will fail authentication checks, affecting deliverability. Re-verification requires DNS changes and propagation time.\n\nSafer alternatives:\n- GET /domains/{id}: Export domain configuration\n- Document DNS records before deletion\n- Verify new domain is working before removing old"
         },
         {
           "name": "postmark-delete-sender-signature",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.postmarkapp\\.com/senders/|api\\.postmarkapp\\.com/senders/\\d+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "postmarkapp"
+            ]
+          },
           "reason": "DELETE to Postmark /senders removes a sender signature.",
           "severity": "high",
           "explanation": "Deleting a sender signature prevents sending from that email address. Applications using this sender will fail until a new signature is verified. Re-verification requires confirming the email address.\n\nSafer alternatives:\n- GET /senders/{id}: Document sender configuration\n- Create and verify new sender before deleting old\n- Update application configurations first"
         },
         {
           "name": "postmark-delete-webhook",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.postmarkapp\\.com/webhooks/|api\\.postmarkapp\\.com/webhooks/\\d+.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "postmarkapp"
+            ]
+          },
           "reason": "DELETE to Postmark /webhooks removes a webhook configuration.",
           "severity": "medium",
           "explanation": "Deleting a webhook stops event notifications to your application. Bounce, delivery, open, click, and spam complaint notifications will not be received. This affects email analytics and automation workflows.\n\nSafer alternatives:\n- GET /webhooks/{id}: Document webhook URL and events\n- Set up new webhook before removing old one\n- Test webhook endpoints before configuration changes"
         },
         {
           "name": "postmark-delete-suppression",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.postmarkapp\\.com/message-streams/[^/]+/suppressions/|api\\.postmarkapp\\.com/message-streams/[^/]+/suppressions/.*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "postmarkapp"
+            ]
+          },
           "reason": "DELETE to Postmark suppressions endpoint removes suppression entries.",
           "severity": "high",
           "explanation": "Removing suppression entries allows emails to addresses that previously bounced, complained, or unsubscribed. This damages sender reputation and may violate anti-spam regulations like CAN-SPAM and GDPR.\n\nSafer alternatives:\n- GET suppressions: Review reason for suppression\n- Never remove unsubscribe or complaint suppressions\n- Use email verification services before removing bounces"
         },
         {
           "name": "postmark-delete-message-stream",
-          "regex": "(?:-X\\s*DELETE|--request\\s+DELETE).*api\\.postmarkapp\\.com/message-streams/[\\w-]+(?:\\s|$)|api\\.postmarkapp\\.com/message-streams/[\\w-]+(?:\\s|$).*(?:-X\\s*DELETE|--request\\s+DELETE)",
+          "when": {
+            "command": [
+              "postmarkapp"
+            ]
+          },
           "reason": "DELETE to Postmark /message-streams removes a message stream.",
           "severity": "high",
           "explanation": "Deleting a message stream removes all associated statistics, suppressions, and configurations. Applications sending to this stream will fail. Transactional and broadcast streams have different behaviors when deleted.\n\nSafer alternatives:\n- GET /message-streams/{id}: Export stream configuration\n- Review stream statistics before deletion\n- Migrate to new stream before deleting old one"

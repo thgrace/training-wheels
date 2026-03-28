@@ -19,7 +19,4 @@ const (
 
 	// IOError: file not found, permission denied, settings.json write failure, etc.
 	IOError = 5
-
-	// Ask: command should be presented to the user for confirmation.
-	Ask = 6
 )

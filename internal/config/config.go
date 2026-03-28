@@ -119,6 +119,19 @@ func UserConfigPath() (string, error) {
 // Load returns a Config populated from defaults → ~/.tw/config.json → env vars.
 // Missing config files are not errors. JSON parse errors are returned.
 func Load() (*Config, error) {
+	cfg, err := LoadBase()
+	if err != nil {
+		return nil, err
+	}
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// LoadBase returns a Config populated from defaults → ~/.tw/config.json → env vars.
+// Unlike Load, it does not merge any project profile additions.
+func LoadBase() (*Config, error) {
 	cfg := DefaultConfig()
 	if err := applyUserConfig(cfg); err != nil {
 		return nil, err

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Wheels Docs</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --paper: rgba(255, 250, 242, 0.88);
+      --ink: #1f1a17;
+      --muted: #5d544d;
+      --line: rgba(216, 205, 189, 0.92);
+      --accent: #0f766e;
+      --accent-soft: rgba(15, 118, 110, 0.1);
+      --warm: #b45309;
+      --shadow: 0 22px 56px rgba(54, 42, 32, 0.12);
+      --radius: 20px;
+      --sans: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(180, 83, 9, 0.12), transparent 26%),
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.14), transparent 32%),
+        linear-gradient(180deg, #f8f2e8 0%, var(--bg) 100%);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page {
+      width: min(1080px, calc(100% - 32px));
+      margin: 32px auto 72px;
+      display: grid;
+      gap: 24px;
+    }
+
+    .hero,
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 2px);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .hero {
+      padding: 38px 38px 34px;
+      background:
+        linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(255, 250, 242, 0) 58%),
+        linear-gradient(180deg, rgba(180, 83, 9, 0.08), rgba(255, 250, 242, 0));
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(31, 26, 23, 0.05);
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    h1 {
+      margin: 18px 0 12px;
+      font-size: clamp(2.2rem, 4vw, 3.9rem);
+      line-height: 0.98;
+      max-width: 12ch;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 70ch;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 1.03rem;
+    }
+
+    .meta {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.62);
+      border: 1px solid rgba(216, 205, 189, 0.95);
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(15, 118, 110, 0.28);
+      box-shadow: 0 26px 60px rgba(54, 42, 32, 0.16);
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .arrow {
+      color: var(--warm);
+      font-size: 1.2rem;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 1.35rem;
+      line-height: 1.15;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .card code {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      color: var(--accent);
+    }
+
+    @media (max-width: 780px) {
+      .page {
+        width: min(100%, calc(100% - 24px));
+        margin-top: 20px;
+      }
+
+      .hero,
+      .card {
+        padding-left: 22px;
+        padding-right: 22px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <span class="eyebrow">Training Wheels Docs</span>
+      <h1>Static docs for GitHub Pages.</h1>
+      <p>
+        This site publishes the self-contained HTML docs from the repository so they can be shared
+        as a stable GitHub Pages site without exposing the rest of the private planning docs.
+      </p>
+      <div class="meta">
+        <span class="pill">Published from <code>docs/</code></span>
+        <span class="pill">Deployed by GitHub Actions</span>
+        <span class="pill">Public repo only</span>
+      </div>
+    </section>
+
+    <section class="grid" aria-label="Published documents">
+      <a class="card" href="./project-setup-and-hook-flow.html">
+        <div class="card-top">
+          <span class="tag">Architecture</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </div>
+        <h2>Project Setup and Hook Evaluation Flow</h2>
+        <p>
+          Walk through the install path, runtime behavior, and the decision pipeline from agent
+          command submission to final allow, ask, or deny output.
+        </p>
+        <code>/project-setup-and-hook-flow.html</code>
+      </a>
+
+      <a class="card" href="./builtin-pack-catalog.html">
+        <div class="card-top">
+          <span class="tag">Reference</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </div>
+        <h2>Built-in Pack Catalog</h2>
+        <p>
+          Browse the built-in safety packs, categories, and coverage areas in a searchable static
+          reference page.
+        </p>
+        <code>/builtin-pack-catalog.html</code>
+      </a>
+    </section>
+  </main>
+</body>
+</html>

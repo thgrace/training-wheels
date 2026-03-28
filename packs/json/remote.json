@@ -8,31 +8,31 @@
       "keywords": [
         "rsync"
       ],
-      "safe_patterns": [
-        {
-          "name": "rsync-dry-run",
-          "regex": "rsync\\b.*\\s--dry-run\\b"
-        },
-        {
-          "name": "rsync-short-dry-run",
-          "regex": "rsync\\b.*\\s+-[A-Za-z]*n[A-Za-z]*\\b"
-        },
-        {
-          "name": "rsync-list-only",
-          "regex": "rsync\\b.*\\s--list-only\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "rsync-delete",
-          "regex": "rsync\\b.*\\s--delete(?:-[a-z-]+)?\\b",
+          "when": {
+            "command": [
+              "rsync"
+            ],
+            "flag": [
+              "--delete"
+            ]
+          },
           "reason": "rsync --delete removes destination files not present in source.",
           "severity": "high",
           "explanation": "The --delete flag removes files from the destination that don't exist in the source. If source and destination are swapped, or if the source is unexpectedly empty, important data on the destination can be permanently deleted.\n\nSafer alternatives:\n- rsync --dry-run --delete: Preview what would be deleted\n- rsync without --delete: Only adds/updates, never deletes\n- rsync --backup --delete: Keep backup copies of deleted files"
         },
         {
           "name": "rsync-del-short",
-          "regex": "rsync\\b.*\\s--del\\b",
+          "when": {
+            "command": [
+              "rsync"
+            ],
+            "flag": [
+              "--del"
+            ]
+          },
           "reason": "rsync --del is a short alias for --delete and is destructive.",
           "severity": "high",
           "explanation": "The --del flag is shorthand for --delete-during, which deletes destination files not present in source during the transfer. This is slightly more dangerous than --delete-after because deletions happen incrementally.\n\nSafer alternatives:\n- rsync --dry-run --del: Preview deletions first\n- rsync without deletion flags: Additive sync only\n- Use --delete-after for predictable batch deletion"
@@ -48,83 +48,83 @@
         "ssh-keygen",
         "ssh-keyscan"
       ],
-      "safe_patterns": [
-        {
-          "name": "ssh-version",
-          "regex": "ssh\\s+-V\\b"
-        },
-        {
-          "name": "ssh-version-long",
-          "regex": "ssh\\s+--version\\b"
-        },
-        {
-          "name": "ssh-keygen-list",
-          "regex": "ssh-keygen\\s+.*-l\\b"
-        },
-        {
-          "name": "ssh-keygen-fingerprint",
-          "regex": "ssh-keygen\\s+.*-lf?\\b"
-        },
-        {
-          "name": "ssh-keyscan",
-          "regex": "ssh-keyscan\\b"
-        },
-        {
-          "name": "ssh-add-list",
-          "regex": "ssh-add\\s+-[lL]\\b"
-        },
-        {
-          "name": "ssh-agent",
-          "regex": "ssh-agent\\b"
-        },
-        {
-          "name": "ssh-help",
-          "regex": "ssh\\s+--?h(elp)?\\b"
-        },
-        {
-          "name": "ssh-keygen-help",
-          "regex": "ssh-keygen\\s+--?h(elp)?\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "ssh-remote-rm-rf",
-          "regex": "ssh\\s+(?:\\S+\\s+)*(?:-[A-Za-z]+\\s+)*\\S+[@:]?\\S*\\s+['\"]?.*\\brm\\s+-[a-zA-Z]*r[a-zA-Z]*f",
+          "when": {
+            "command": [
+              "ssh"
+            ],
+            "arg_contains": [
+              "rm"
+            ]
+          },
           "reason": "SSH remote execution contains destructive rm -rf command.",
           "severity": "critical",
           "explanation": "Executing rm -rf on a remote system via SSH can cause irreversible data loss. Remote systems often have different directory structures and you may not have the same safety mechanisms in place.\n\nSafer alternatives:\n- SSH in and run commands interactively with confirmation\n- Use --dry-run or preview flags when available\n- Ensure backups exist on the remote system"
         },
         {
           "name": "ssh-remote-git-reset-hard",
-          "regex": "ssh\\s+(?:\\S+\\s+)*(?:-[A-Za-z]+\\s+)*\\S+[@:]?\\S*\\s+['\"]?.*\\bgit\\s+reset\\s+--hard\\b",
+          "when": {
+            "command": [
+              "ssh"
+            ]
+          },
           "reason": "SSH remote execution contains destructive git reset --hard command.",
           "severity": "high",
           "explanation": "Running git reset --hard on a remote server discards all uncommitted changes. On production servers, this might destroy deployment state or configuration changes made directly on the server.\n\nSafer alternatives:\n- git stash on the remote first to save changes\n- Use git status remotely to check for uncommitted work\n- Consider proper deployment pipelines instead of direct remote git"
         },
         {
           "name": "ssh-remote-git-clean",
-          "regex": "ssh\\s+(?:\\S+\\s+)*(?:-[A-Za-z]+\\s+)*\\S+[@:]?\\S*\\s+['\"]?.*\\bgit\\s+clean\\s+-[a-zA-Z]*f",
+          "when": {
+            "command": [
+              "ssh"
+            ]
+          },
           "reason": "SSH remote execution contains destructive git clean -f command.",
           "severity": "high",
           "explanation": "Running git clean -f on a remote server permanently removes untracked files. This might delete logs, uploads, or configuration files that were never committed to the repository.\n\nSafer alternatives:\n- Run git clean -n first to preview what would be deleted\n- Use .gitignore to protect important untracked files\n- Back up untracked files before cleaning"
         },
         {
           "name": "ssh-keygen-remove-host",
-          "regex": "ssh-keygen\\s+(?:\\S+\\s+)*-R\\b",
+          "when": {
+            "command": [
+              "ssh-keygen"
+            ],
+            "flag": [
+              "-R"
+            ]
+          },
           "reason": "ssh-keygen -R removes entries from known_hosts file.",
           "severity": "medium",
           "explanation": "Removing entries from known_hosts weakens protection against man-in-the-middle attacks. The next connection will trust any key presented by the remote host.\n\nSafer alternatives:\n- Verify the new host key fingerprint before removing old entry\n- Use ssh-keyscan to preview the new key\n- Update entry rather than removing (add new key, then remove old)"
         },
         {
           "name": "ssh-add-delete-all",
-          "regex": "ssh-add\\s+-[dD]\\b",
+          "when": {
+            "command": [
+              "ssh-add"
+            ],
+            "flag": [
+              "-d",
+              "-D"
+            ]
+          },
           "reason": "ssh-add -d/-D removes identities from the SSH agent.",
           "severity": "medium",
           "explanation": "Removing SSH identities from the agent will require re-authentication for subsequent connections. Using -D removes ALL identities, which may interrupt active sessions or scripts.\n\nSafer alternatives:\n- Use -d to remove specific keys rather than -D for all\n- List keys with ssh-add -l before removing\n- Re-add keys immediately if needed"
         },
         {
           "name": "ssh-remote-sudo-rm",
-          "regex": "ssh\\s+(?:\\S+\\s+)*\\S+[@:]?\\S*\\s+['\"]?.*\\bsudo\\s+rm\\b",
+          "when": {
+            "command": [
+              "ssh"
+            ],
+            "arg_contains": [
+              "rm",
+              "sudo rm"
+            ]
+          },
           "reason": "SSH remote execution with sudo rm is high-risk.",
           "severity": "critical",
           "explanation": "Executing sudo rm on a remote system bypasses normal permission restrictions and can delete system files. Combined with SSH, there's no interactive confirmation and errors may not be visible.\n\nSafer alternatives:\n- SSH in and run sudo commands interactively\n- Use mv to a backup location instead of rm\n- Implement proper cleanup scripts with safety checks"
@@ -138,74 +138,98 @@
       "keywords": [
         "scp"
       ],
-      "safe_patterns": [
-        {
-          "name": "scp-help",
-          "regex": "scp\\b.*\\s--?h(elp)?\\b"
-        },
-        {
-          "name": "scp-download",
-          "regex": "scp\\b.*\\s(?:\\S+@)?\\S+:\\S+\\s+\\.\\S*\\s*$"
-        },
-        {
-          "name": "scp-to-home",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?~/\\S+\\s*$"
-        },
-        {
-          "name": "scp-to-tmp",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/tmp/\\S*\\s*$"
-        },
-        {
-          "name": "scp-to-var-tmp",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/var/tmp(?:/\\S*)?\\s*$"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "scp-recursive-root",
-          "regex": "scp\\b.*\\s-[A-Za-z0-9]*r[A-Za-z0-9]*\\b.*\\s(?:(?:\\S+@)?\\S+:)?/\\s*$",
+          "when": {
+            "command": [
+              "scp"
+            ],
+            "flag": [
+              "-r"
+            ]
+          },
           "reason": "scp -r to root (/) is extremely dangerous.",
           "severity": "critical",
           "explanation": "Recursive copy to the root filesystem can overwrite critical system files, potentially rendering the system unbootable. This affects all system directories including /etc, /bin, /lib, and /boot.\n\nSafer alternatives:\n- Specify a target subdirectory instead of /\n- Use rsync with --dry-run to preview changes\n- Copy to /tmp first and move files individually"
         },
         {
           "name": "scp-to-etc",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/etc(?:/\\S*)?\\s*$",
+          "when": {
+            "command": [
+              "scp"
+            ],
+            "arg_contains": [
+              "/etc"
+            ]
+          },
           "reason": "scp to /etc/ can overwrite system configuration.",
           "severity": "high",
           "explanation": "The /etc directory contains critical system configuration files including passwd, shadow, fstab, and network settings. Overwriting these can lock you out of the system or cause services to fail.\n\nSafer alternatives:\n- Copy to a staging directory first\n- Back up existing files before overwriting\n- Use configuration management tools (Ansible, etc.)"
         },
         {
           "name": "scp-to-var",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/var(?:/\\S*)?\\s*$",
+          "when": {
+            "command": [
+              "scp"
+            ],
+            "arg_contains": [
+              "/var"
+            ]
+          },
           "reason": "scp to /var/ can overwrite system data.",
           "severity": "high",
           "explanation": "The /var directory contains variable data including logs, databases, mail spools, and application state. Overwriting this data can cause data loss and service disruptions.\n\nSafer alternatives:\n- Use /var/tmp for temporary staging\n- Stop affected services before modifying their data\n- Back up existing data first"
         },
         {
           "name": "scp-to-boot",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/boot(?:/\\S*)?\\s*$",
+          "when": {
+            "command": [
+              "scp"
+            ],
+            "arg_contains": [
+              "/boot"
+            ]
+          },
           "reason": "scp to /boot/ can corrupt boot configuration.",
           "severity": "critical",
           "explanation": "The /boot directory contains the kernel, initramfs, and bootloader configuration. Corrupting these files will prevent the system from booting, requiring rescue media to recover.\n\nSafer alternatives:\n- Use package manager for kernel updates\n- Keep backup kernels available\n- Test changes in a VM first"
         },
         {
           "name": "scp-to-usr",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/usr(?:/\\S*)?\\s*$",
+          "when": {
+            "command": [
+              "scp"
+            ],
+            "arg_contains": [
+              "/usr"
+            ]
+          },
           "reason": "scp to /usr/ can overwrite system binaries.",
           "severity": "high",
           "explanation": "The /usr directory contains system binaries, libraries, and shared resources. Overwriting files here can break system utilities and installed applications.\n\nSafer alternatives:\n- Use /usr/local for custom installations\n- Use package managers for system updates\n- Install to user directories when possible"
         },
         {
           "name": "scp-to-bin",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/(?:bin|sbin)(?:/\\S*)?\\s*$",
+          "when": {
+            "command": [
+              "scp"
+            ]
+          },
           "reason": "scp to /bin/ or /sbin/ can overwrite system binaries.",
           "severity": "critical",
           "explanation": "The /bin and /sbin directories contain essential system binaries required for basic operation. Overwriting these can make the system unusable and require rescue mode recovery.\n\nSafer alternatives:\n- Install custom scripts to /usr/local/bin\n- Use package managers for system updates\n- Test binaries in user directories first"
         },
         {
           "name": "scp-to-lib",
-          "regex": "scp\\b.*\\s(?:(?:\\S+@)?\\S+:)?/lib(?:64)?(?:/\\S*)?\\s*$",
+          "when": {
+            "command": [
+              "scp"
+            ],
+            "arg_contains": [
+              "/lib"
+            ]
+          },
           "reason": "scp to /lib/ can overwrite system libraries.",
           "severity": "critical",
           "explanation": "The /lib and /lib64 directories contain shared libraries required by system binaries. Overwriting these can cause immediate system instability and prevent commands from running.\n\nSafer alternatives:\n- Use package managers for library updates\n- Install custom libraries to /usr/local/lib\n- Use LD_LIBRARY_PATH for testing"

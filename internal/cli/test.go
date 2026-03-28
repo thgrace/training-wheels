@@ -1,28 +1,22 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/thgrace/training-wheels/internal/config"
+	"github.com/thgrace/training-wheels/internal/app"
 	"github.com/thgrace/training-wheels/internal/eval"
 	"github.com/thgrace/training-wheels/internal/exitcodes"
-	"github.com/thgrace/training-wheels/internal/logger"
-	"github.com/thgrace/training-wheels/internal/override"
-	"github.com/thgrace/training-wheels/internal/packs"
-	"github.com/thgrace/training-wheels/internal/session"
-	"github.com/thgrace/training-wheels/internal/shellcontext"
 )
 
-var testFormat string
-var testExplain bool
-var testShell string
-var testExpect string
-var testForce string
+var (
+	testJSON   bool
+	testShell  string
+	testExpect string
+	testForce  string
+)
 
 var testCmd = &cobra.Command{
 	Use:   "test <command>",
@@ -32,9 +26,8 @@ var testCmd = &cobra.Command{
 }
 
 func init() {
-	testCmd.Flags().StringVar(&testFormat, "format", "pretty", "Output format: pretty or json")
-	testCmd.Flags().BoolVar(&testExplain, "explain", false, "Show detailed explanation (same as tw explain)")
-	testCmd.Flags().StringVar(&testShell, "shell", "", "Shell context: posix, powershell, cmd")
+	bindJSONOutputFlags(testCmd.Flags(), &testJSON)
+	testCmd.Flags().StringVar(&testShell, "shell", "", shellFlagUsage)
 	testCmd.Flags().StringVar(&testExpect, "expect", "", "Expected decision: allow, deny, or ask. Exits 0 on match, 1 on mismatch")
 	testCmd.Flags().StringVar(&testForce, "force", "", "Skip evaluation and force a decision: allow, deny, or ask")
 }
@@ -47,95 +40,90 @@ var validDecisions = map[string]eval.EvaluationDecision{
 }
 
 func runTest(cmd *cobra.Command, args []string) error {
-	if testExplain {
-		return runExplain(cmd, args)
-	}
-
 	command := args[0]
 	w := cmd.OutOrStdout()
 
 	// Validate --expect value if provided.
 	if testExpect != "" {
-		if _, ok := validDecisions[strings.ToLower(testExpect)]; !ok {
+		if _, ok := parseDecisionFlag(testExpect); !ok {
 			fmt.Fprintf(w, "invalid --expect value %q: must be allow, deny, or ask\n", testExpect)
-			os.Exit(exitcodes.ConfigError)
+			return silentExit(exitcodes.ConfigError)
 		}
 	}
 
 	// Validate --force value if provided.
 	if testForce != "" {
-		if _, ok := validDecisions[strings.ToLower(testForce)]; !ok {
+		if _, ok := parseDecisionFlag(testForce); !ok {
 			fmt.Fprintf(w, "invalid --force value %q: must be allow, deny, or ask\n", testForce)
-			os.Exit(exitcodes.ConfigError)
+			return silentExit(exitcodes.ConfigError)
 		}
 	}
 
 	// --force: skip evaluation, return the forced decision.
 	if testForce != "" {
-		forcedDecision := validDecisions[strings.ToLower(testForce)]
+		forcedDecision, _ := parseDecisionFlag(testForce)
 		result := &eval.EvaluationResult{
 			Decision: forcedDecision,
 			Command:  command,
 		}
-		printResult(w, result, command)
-		exitForDecision(forcedDecision)
-		return nil
+		printResult(w, result, command, useJSONOutput(testJSON))
+		return exitForDecision(forcedDecision)
 	}
 
 	// Normal evaluation path.
-	cfg, err := config.Load()
+	cfg, err := app.LoadConfig()
 	if err != nil {
-		logger.Error("config error", "error", err)
-		os.Exit(exitcodes.ConfigError)
+		return exitErrorf(exitcodes.ConfigError, "config error: %w", err)
 	}
 
-	evaluator := eval.NewEvaluator(cfg, packs.DefaultRegistry())
-
-	if testShell != "" {
-		evaluator.SetShell(shellcontext.FromName(testShell))
+	shell, err := resolveShellFlag(testShell)
+	if err != nil {
+		fmt.Fprintln(w, err)
+		return silentExit(exitcodes.ConfigError)
 	}
 
-	// Load overrides.
-	user, project, ovErr := override.LoadMerged()
-	if ovErr != nil {
-		logger.Warn("override load error", "error", ovErr)
-	} else {
-		evaluator.SetOverrides(user, project)
-	}
+	evaluator := app.NewEvaluator(cfg, app.EvalOptions{
+		Shell:         shell,
+		LoadOverrides: true,
+		LoadRules:     true,
+		LoadSession:   true,
+	})
 
-	// Load session allowlist (fail-open).
-	if token, _ := session.ReadToken(); token != "" {
-		if secret, err := session.LoadOrCreateSecret(session.SecretPath()); err == nil {
-			if sa, err := session.Load(token, secret); err == nil {
-				evaluator.SetSessionAllows(sa)
-			}
-		}
-	}
-
-	ctx, cancel := evalContext(cfg)
+	ctx, cancel := app.EvalContext(cfg)
 	defer cancel()
 
 	result := evaluator.Evaluate(ctx, command)
 
+	expectedDecision, _ := parseDecisionFlag(testExpect)
+
 	// Apply Deny → Ask conversion when checking for ask (mirrors hook.go behavior).
-	if testExpect == "ask" && result.Decision == eval.DecisionDeny {
+	if shouldApplyDenyToAskCompatibility(expectedDecision, result) {
 		result.Decision = eval.DecisionAsk
 	}
 
 	// --expect: validate the result against expected decision.
 	if testExpect != "" {
-		expected := validDecisions[strings.ToLower(testExpect)]
-		runExpectCheck(w, result, command, expected)
-		return nil
+		return runExpectCheck(w, result, command, expectedDecision)
 	}
 
 	// Default: print result and exit with decision code.
-	printResult(w, result, command)
-	exitForDecision(result.Decision)
-	return nil
+	printResult(w, result, command, useJSONOutput(testJSON))
+	return exitForDecision(result.Decision)
 }
 
-func runExpectCheck(w io.Writer, result *eval.EvaluationResult, command string, expected eval.EvaluationDecision) {
+func parseDecisionFlag(value string) (eval.EvaluationDecision, bool) {
+	decision, ok := validDecisions[strings.ToLower(value)]
+	return decision, ok
+}
+
+func shouldApplyDenyToAskCompatibility(expected eval.EvaluationDecision, result *eval.EvaluationResult) bool {
+	return expected == eval.DecisionAsk &&
+		result.Decision == eval.DecisionDeny &&
+		result.PatternInfo != nil &&
+		result.PatternInfo.Source == eval.SourcePack
+}
+
+func runExpectCheck(w io.Writer, result *eval.EvaluationResult, command string, expected eval.EvaluationDecision) error {
 	fmt.Fprintf(w, "Command:  %s\n", command)
 	fmt.Fprintf(w, "Expected: %s\n", expected)
 	fmt.Fprintf(w, "Got:      %s\n", result.Decision)
@@ -147,28 +135,32 @@ func runExpectCheck(w io.Writer, result *eval.EvaluationResult, command string, 
 
 	if result.Decision == expected {
 		fmt.Fprintf(w, "\n✓ PASS\n")
-		os.Exit(exitcodes.Allow)
+		return nil
 	}
 
 	fmt.Fprintf(w, "\n✗ FAIL\n")
-	os.Exit(1)
+	return silentExit(1)
 }
 
-func printResult(w io.Writer, result *eval.EvaluationResult, command string) {
-	switch testFormat {
-	case "json":
+func printResult(w io.Writer, result *eval.EvaluationResult, command string, jsonOutput bool) {
+	switch {
+	case jsonOutput:
 		printTestJSON(w, result)
 	default:
 		printTestPretty(w, result, command)
 	}
 }
 
-func exitForDecision(d eval.EvaluationDecision) {
+func exitForDecision(d eval.EvaluationDecision) error {
 	switch d {
-	case eval.DecisionAllow, eval.DecisionAsk:
-		os.Exit(exitcodes.Allow)
+	case eval.DecisionAllow:
+		return nil
+	case eval.DecisionAsk:
+		// Ask exits non-zero so test scripts can detect it.
+		// Agents distinguish ask from deny via the JSON payload.
+		return silentExit(exitcodes.Deny)
 	default:
-		os.Exit(exitcodes.Deny)
+		return silentExit(exitcodes.Deny)
 	}
 }
 
@@ -226,8 +218,7 @@ func printTestJSON(w io.Writer, result *eval.EvaluationResult) {
 			Reason: result.SessionEntry.Reason,
 		}
 	}
-	data, _ := json.MarshalIndent(out, "", "  ")
-	fmt.Fprintln(w, string(data))
+	_ = writeJSONOutput(w, out)
 }
 
 func printTestPretty(w io.Writer, result *eval.EvaluationResult, command string) {
@@ -244,6 +235,10 @@ func printTestPretty(w io.Writer, result *eval.EvaluationResult, command string)
 		}
 	case eval.DecisionAsk:
 		fmt.Fprintf(w, "? ASK: %s\n", command)
+		if result.OverrideEntry != nil {
+			fmt.Fprintf(w, "  Override: %s %s=%q (reason: %s)\n",
+				result.OverrideEntry.Action, result.OverrideEntry.Kind, result.OverrideEntry.Value, result.OverrideEntry.Reason)
+		}
 		if result.PatternInfo != nil {
 			pi := result.PatternInfo
 			fmt.Fprintf(w, "  Rule:     %s\n", pi.RuleID)
@@ -253,6 +248,10 @@ func printTestPretty(w io.Writer, result *eval.EvaluationResult, command string)
 		}
 	default:
 		fmt.Fprintf(w, "✗ DENY: %s\n", command)
+		if result.OverrideEntry != nil {
+			fmt.Fprintf(w, "  Override: %s %s=%q (reason: %s)\n",
+				result.OverrideEntry.Action, result.OverrideEntry.Kind, result.OverrideEntry.Value, result.OverrideEntry.Reason)
+		}
 		if result.PatternInfo != nil {
 			pi := result.PatternInfo
 			fmt.Fprintf(w, "  Rule:     %s\n", pi.RuleID)

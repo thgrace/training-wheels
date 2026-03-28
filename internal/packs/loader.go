@@ -25,32 +25,42 @@ type jsonCategoryFile struct {
 }
 
 type jsonPack struct {
-	ID                  *string                   `json:"id"`
-	Name                *string                   `json:"name"`
-	Description         *string                   `json:"description"`
-	Keywords            *[]string                 `json:"keywords"`
-	SafePatterns        *[]jsonSafePattern        `json:"safe_patterns"`
-	DestructivePatterns *[]jsonDestructivePattern `json:"destructive_patterns"`
-}
-
-type jsonSafePattern struct {
-	Name  *string `json:"name"`
-	Regex *string `json:"regex"`
-}
-
-type jsonDestructivePattern struct {
-	Name        *string           `json:"name"`
-	Regex       *string           `json:"regex"`
-	Reason      *string           `json:"reason"`
-	Severity    *string           `json:"severity"`
-	Explanation *string           `json:"explanation"`
-	Suggestions *[]jsonSuggestion `json:"suggestions"`
+	ID                 *string                  `json:"id"`
+	Name               *string                  `json:"name"`
+	Description        *string                  `json:"description"`
+	Keywords           *[]string                `json:"keywords"`
+	StructuralPatterns *[]jsonStructuralPattern `json:"structural_patterns"`
 }
 
 type jsonSuggestion struct {
 	Command     *string `json:"command"`
 	Description *string `json:"description"`
 	Platform    *string `json:"platform"`
+}
+
+// v2 JSON types for structural when/unless patterns.
+type jsonStructuralPattern struct {
+	Name          *string           `json:"name"`
+	When          *jsonPatternCond  `json:"when"`
+	Unless        *jsonPatternCond  `json:"unless"`
+	CaseSensitive *bool             `json:"case_sensitive"`
+	Reason        *string           `json:"reason"`
+	Severity      *string           `json:"severity"`
+	Action        *string           `json:"action"`
+	Explanation   *string           `json:"explanation"`
+	Suggestions   *[]jsonSuggestion `json:"suggestions"`
+}
+
+type jsonPatternCond struct {
+	Command                []string `json:"command"`
+	Subcommand             []string `json:"subcommand"`
+	Flag                   []string `json:"flag"`
+	AllFlags               []string `json:"all_flags"`
+	ArgExact               []string `json:"arg_exact"`
+	ArgPrefix              []string `json:"arg_prefix"`
+	AllArgPrefix           []string `json:"all_arg_prefix"`
+	ArgContains            []string `json:"arg_contains"`
+	OutputRedirectContains []string `json:"output_redirect_contains"`
 }
 
 // LoadFromEmbed loads pack files from an embedded filesystem glob.
@@ -221,20 +231,15 @@ func convertJSONPack(raw jsonPack, category string) (*Pack, error) {
 	if raw.Keywords == nil || len(*raw.Keywords) == 0 {
 		return nil, fmt.Errorf("keywords must contain at least one item")
 	}
-	if raw.SafePatterns == nil {
-		return nil, fmt.Errorf("safe_patterns is required")
-	}
-	if raw.DestructivePatterns == nil {
-		return nil, fmt.Errorf("destructive_patterns is required")
+	if raw.StructuralPatterns == nil || len(*raw.StructuralPatterns) == 0 {
+		return nil, fmt.Errorf("structural_patterns is required (v1 regex packs are no longer supported)")
 	}
 
 	pack := &Pack{
-		ID:                  id,
-		Name:                name,
-		Description:         description,
-		Keywords:            append([]string(nil), (*raw.Keywords)...),
-		SafePatterns:        make([]SafePattern, 0, len(*raw.SafePatterns)),
-		DestructivePatterns: make([]DestructivePattern, 0, len(*raw.DestructivePatterns)),
+		ID:          id,
+		Name:        name,
+		Description: description,
+		Keywords:    append([]string(nil), (*raw.Keywords)...),
 	}
 
 	for i, keyword := range pack.Keywords {
@@ -243,80 +248,61 @@ func convertJSONPack(raw jsonPack, category string) (*Pack, error) {
 		}
 	}
 
-	seenPatternNames := make(map[string]struct{}, len(*raw.SafePatterns)+len(*raw.DestructivePatterns))
-	for idx, rawPattern := range *raw.SafePatterns {
-		pattern, err := convertSafePattern(rawPattern)
+	// Structural when/unless patterns.
+	seenPatternNames := make(map[string]struct{}, len(*raw.StructuralPatterns))
+	for idx, rawPattern := range *raw.StructuralPatterns {
+		pattern, err := convertStructuralPattern(rawPattern)
 		if err != nil {
-			return nil, fmt.Errorf("safe_patterns[%d]: %w", idx, err)
+			return nil, fmt.Errorf("structural_patterns[%d]: %w", idx, err)
 		}
 		if err := ensureUniquePatternName(seenPatternNames, pattern.Name); err != nil {
 			return nil, err
 		}
-		pack.SafePatterns = append(pack.SafePatterns, pattern)
-	}
-
-	for idx, rawPattern := range *raw.DestructivePatterns {
-		pattern, err := convertDestructivePattern(rawPattern)
-		if err != nil {
-			return nil, fmt.Errorf("destructive_patterns[%d]: %w", idx, err)
-		}
-		if err := ensureUniquePatternName(seenPatternNames, pattern.Name); err != nil {
-			return nil, err
-		}
-		pack.DestructivePatterns = append(pack.DestructivePatterns, pattern)
+		pack.StructuralPatterns = append(pack.StructuralPatterns, pattern)
 	}
 
 	return pack, nil
 }
 
-func convertSafePattern(raw jsonSafePattern) (SafePattern, error) {
+func convertStructuralPattern(raw jsonStructuralPattern) (StructuralPattern, error) {
 	name, err := requireNonEmptyString("name", raw.Name)
 	if err != nil {
-		return SafePattern{}, err
+		return StructuralPattern{}, err
 	}
-	regex, err := requireNonEmptyString("regex", raw.Regex)
-	if err != nil {
-		return SafePattern{}, err
+	if raw.When == nil {
+		return StructuralPattern{}, fmt.Errorf("when is required")
 	}
-	if err := ValidateRegex(regex); err != nil {
-		return SafePattern{}, fmt.Errorf("invalid regex %q: %w", regex, err)
-	}
-	return SafePattern{
-		Name:  name,
-		Regex: NewLazyRegex(regex),
-	}, nil
-}
-
-func convertDestructivePattern(raw jsonDestructivePattern) (DestructivePattern, error) {
-	name, err := requireNonEmptyString("name", raw.Name)
-	if err != nil {
-		return DestructivePattern{}, err
-	}
-	regex, err := requireNonEmptyString("regex", raw.Regex)
-	if err != nil {
-		return DestructivePattern{}, err
-	}
-	if err := ValidateRegex(regex); err != nil {
-		return DestructivePattern{}, fmt.Errorf("invalid regex %q: %w", regex, err)
+	when := convertPatternCondition(*raw.When)
+	if len(when.Command) == 0 {
+		return StructuralPattern{}, fmt.Errorf("when.command is required (must specify at least one command name)")
 	}
 	reason, err := requireNonEmptyString("reason", raw.Reason)
 	if err != nil {
-		return DestructivePattern{}, err
+		return StructuralPattern{}, err
 	}
 	severityText, err := requireNonEmptyString("severity", raw.Severity)
 	if err != nil {
-		return DestructivePattern{}, err
+		return StructuralPattern{}, err
 	}
 	severity, err := ParseSeverity(severityText)
 	if err != nil {
-		return DestructivePattern{}, err
+		return StructuralPattern{}, err
 	}
 
-	pattern := DestructivePattern{
+	pattern := StructuralPattern{
 		Name:     name,
-		Regex:    NewLazyRegex(regex),
+		When:     when,
 		Reason:   reason,
 		Severity: severity,
+	}
+	if raw.CaseSensitive != nil && *raw.CaseSensitive {
+		pattern.CaseSensitive = true
+	}
+	if raw.Unless != nil {
+		pattern.Unless = convertPatternCondition(*raw.Unless)
+	}
+	if raw.Action != nil && *raw.Action == "ask" {
+		pattern.Action = "ask"
 	}
 	if raw.Explanation != nil {
 		pattern.Explanation = *raw.Explanation
@@ -326,13 +312,62 @@ func convertDestructivePattern(raw jsonDestructivePattern) (DestructivePattern, 
 		for idx, rawSuggestion := range *raw.Suggestions {
 			suggestion, err := convertSuggestion(rawSuggestion)
 			if err != nil {
-				return DestructivePattern{}, fmt.Errorf("suggestions[%d]: %w", idx, err)
+				return StructuralPattern{}, fmt.Errorf("suggestions[%d]: %w", idx, err)
 			}
 			pattern.Suggestions = append(pattern.Suggestions, suggestion)
 		}
 	}
 
 	return pattern, nil
+}
+
+func convertPatternCondition(raw jsonPatternCond) PatternCondition {
+	return PatternCondition{
+		Command:                copyNonEmptyLower(raw.Command),
+		Subcommand:             copyNonEmptyLower(raw.Subcommand),
+		Flag:                   copyNonEmpty(raw.Flag),
+		AllFlags:               copyNonEmpty(raw.AllFlags),
+		ArgExact:               copyNonEmpty(raw.ArgExact),
+		ArgPrefix:              copyNonEmpty(raw.ArgPrefix),
+		AllArgPrefix:           copyNonEmpty(raw.AllArgPrefix),
+		ArgContains:            copyNonEmptyLower(raw.ArgContains),
+		OutputRedirectContains: copyNonEmptyLower(raw.OutputRedirectContains),
+	}
+}
+
+// copyNonEmpty returns a copy of the slice with empty strings removed.
+func copyNonEmpty(src []string) []string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(src))
+	for _, s := range src {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// copyNonEmptyLower returns a copy of the slice with empty strings removed and all strings lowercased.
+func copyNonEmptyLower(src []string) []string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(src))
+	for _, s := range src {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			out = append(out, strings.ToLower(s))
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func convertSuggestion(raw jsonSuggestion) (PatternSuggestion, error) {

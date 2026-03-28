@@ -4,99 +4,52 @@ import (
 	"testing"
 )
 
-func TestShell_Classify_POSIX(t *testing.T) {
-	shell := &POSIXShell{}
-	
-	// Test line continuation.
-	cmd := "rm \\\n-rf /"
-	spans := Classify(cmd, shell)
-	
-	// Expect spans to cover the full string.
-	// Bash logic treats line continuation as whitespace/separator if not inside a token.
-	// But our classifier currently treats it as part of the scan if not careful.
-	// With the new logic, scanWord should skip it.
-	
-	foundExecuted := false
-	for _, s := range spans {
-		if s.Kind == SpanExecuted {
-			foundExecuted = true
-		}
-	}
-	if !foundExecuted {
-		t.Error("expected to find Executed span in POSIX command")
-	}
-}
-
-func TestShell_Classify_PowerShell(t *testing.T) {
-	shell := &PowerShell{}
-	
-	// Test backtick line continuation.
-	cmd := "rm `\n-rf /"
-	spans := Classify(cmd, shell)
-	
-	foundExecuted := false
-	for _, s := range spans {
-		if s.Kind == SpanExecuted {
-			foundExecuted = true
-		}
-	}
-	if !foundExecuted {
-		t.Error("expected to find Executed span in PowerShell command")
-	}
-}
-
-func TestShell_Sanitize_PowerShell(t *testing.T) {
-	shell := &PowerShell{}
-	
-	// PowerShell uses "" for literal quote inside double quotes.
-	cmd := `echo "this is a ""destructive"" test"`
-	sanitized := Sanitize(cmd, shell)
-	
-	// The content inside quotes should be masked.
-	expected := `echo                                 `
-	if sanitized != expected {
-		t.Errorf("expected %q, got %q", expected, sanitized)
-	}
-}
-
-func TestShell_Sanitize_POSIX_DataRegion(t *testing.T) {
-	shell := &POSIXShell{}
-	
-	// git commit -m "..." is a data region.
-	cmd := `git commit -m "rm -rf /"`
-	sanitized := Sanitize(cmd, shell)
-	
-	// "rm -rf /" should be masked.
-	if sanitized == cmd {
-		t.Error("expected sanitization to mask data region")
-	}
-}
-
-func TestShell_Classify_CmdExe(t *testing.T) {
-	shell := &CmdExe{}
-	
-	// cmd.exe doesn't support single quotes.
-	cmd := `echo 'rm -rf /'`
-	spans := Classify(cmd, shell)
-	
-	for _, s := range spans {
-		t.Logf("Span: %s %q", s.Kind, cmd[s.Start:s.End])
+func TestParseShell(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantName string
+		wantOK   bool
+	}{
+		{name: "posix", input: "posix", wantName: "posix", wantOK: true},
+		{name: "bash alias", input: "bash", wantName: "posix", wantOK: true},
+		{name: "powershell", input: "powershell", wantName: "powershell", wantOK: true},
+		{name: "pwsh alias", input: "pwsh", wantName: "powershell", wantOK: true},
+		{name: "cmd", input: "cmd", wantName: "cmd", wantOK: true},
+		{name: "trimmed", input: "  zsh  ", wantName: "posix", wantOK: true},
+		{name: "unknown", input: "nonsense", wantOK: false},
+		{name: "empty", input: "", wantOK: false},
 	}
 
-	// In cmd.exe, ' is just a character, so rm -rf / should be visible as Arguments.
-	// We want to make sure it's NOT SpanData (which would be masked).
-	foundRM := false
-	for _, s := range spans {
-		text := cmd[s.Start:s.End]
-		if text == "'rm" {
-			foundRM = true
-			if s.Kind == SpanData {
-				t.Error("expected 'rm' NOT to be Data in cmd.exe")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ParseShell(tt.input)
+			if ok != tt.wantOK {
+				t.Fatalf("ParseShell(%q) ok = %v, want %v", tt.input, ok, tt.wantOK)
 			}
-		}
+			if !tt.wantOK {
+				if got != nil {
+					t.Fatalf("ParseShell(%q) = %v, want nil", tt.input, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("ParseShell(%q) = nil, want %q", tt.input, tt.wantName)
+			}
+			if got.Name() != tt.wantName {
+				t.Fatalf("ParseShell(%q).Name() = %q, want %q", tt.input, got.Name(), tt.wantName)
+			}
+		})
 	}
-	if !foundRM {
-		t.Error("expected to find 'rm' token in cmd.exe output")
+}
+
+func TestFromNameFallsBackToDefaultShell(t *testing.T) {
+	got := FromName("nonsense")
+	if got == nil {
+		t.Fatal("FromName returned nil")
+	}
+	if got.Name() != DefaultShell().Name() {
+		t.Fatalf("FromName(%q).Name() = %q, want default shell %q", "nonsense", got.Name(), DefaultShell().Name())
 	}
 }
 

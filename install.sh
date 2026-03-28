@@ -87,21 +87,11 @@ resolve_install_dir() {
     return
   fi
 
-  if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
-    printf '/usr/local/bin'
-    return
-  fi
-
-  if [ ! -d /usr/local/bin ] && [ -d /usr/local ] && [ -w /usr/local ]; then
-    printf '/usr/local/bin'
-    return
-  fi
-
   if [ -z "${HOME:-}" ]; then
-    die "HOME is not set and /usr/local/bin is not writable; set TW_INSTALL_DIR"
+    die "HOME is not set; set TW_INSTALL_DIR to continue"
   fi
 
-  printf '%s/.local/bin' "$HOME"
+  printf '%s/.tw/bin' "$HOME"
 }
 
 calculate_sha256() {

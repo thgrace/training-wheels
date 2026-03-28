@@ -37,11 +37,11 @@ function Resolve-InstallDir {
         return $env:TW_INSTALL_DIR
     }
 
-    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        Fail "LOCALAPPDATA is not set; set TW_INSTALL_DIR to continue"
+    if ([string]::IsNullOrWhiteSpace($HOME)) {
+        Fail "HOME is not set; set TW_INSTALL_DIR to continue"
     }
 
-    return (Join-Path $env:LOCALAPPDATA "Programs\tw\bin")
+    return (Join-Path $HOME ".tw\bin")
 }
 
 function Verify-Checksum {

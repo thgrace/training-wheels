@@ -1,0 +1,6 @@
+internal/cli/agents/
+internal/cli/doctor/
+internal/cli/explain/
+internal/cli/install/
+internal/cli/packs/
+internal/cli/update/

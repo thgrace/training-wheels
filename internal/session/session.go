@@ -17,15 +17,18 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/thgrace/training-wheels/internal/matchutil"
 	"github.com/thgrace/training-wheels/internal/osutil"
 )
 
-// Entry is a single session-scoped allow entry.
+// Entry is a single session-scoped allow or ask entry.
 type Entry struct {
-	ID        string    `json:"id"`         // "sa-XXXX"
-	Kind      string    `json:"kind"`       // "exact", "prefix", "rule"
+	ID        string    `json:"id"`     // "sa-XXXXXXXXXXXXXXXX"
+	Action    string    `json:"action"` // "allow" or "ask"
+	Kind      string    `json:"kind"`   // "exact", "prefix", "rule"
 	Value     string    `json:"value"`
 	Reason    string    `json:"reason"`
 	ExpiresAt time.Time `json:"expires_at"` // zero = session-scoped (no expiry)
@@ -39,6 +42,9 @@ type Allowlist struct {
 	Entries []Entry `json:"entries"`
 	path    string
 }
+
+var fallbackIDCounter uint64
+var idGenerator = generateID
 
 // Load reads the allowlist file for the given token, verifies MACs, and
 // discards invalid or expired entries. Returns an empty allowlist if the
@@ -110,18 +116,33 @@ func (a *Allowlist) Save() error {
 
 // Add creates a new entry with a computed HMAC, appends it, and returns
 // a pointer to the appended entry.
-func (a *Allowlist) Add(secret []byte, kind, value, reason string, expiresAt time.Time) *Entry {
+func (a *Allowlist) Add(secret []byte, action, kind, value, reason string, expiresAt time.Time) *Entry {
+	id := idGenerator()
+	for a.hasID(id) {
+		id = idGenerator()
+	}
+
 	entry := Entry{
-		ID:        generateID(),
+		ID:        id,
+		Action:    action,
 		Kind:      kind,
 		Value:     value,
 		Reason:    reason,
 		ExpiresAt: expiresAt,
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
-		MAC:       computeMAC(secret, kind, value, expiresAt),
+		MAC:       computeMAC(secret, action, kind, value, expiresAt),
 	}
 	a.Entries = append(a.Entries, entry)
 	return &a.Entries[len(a.Entries)-1]
+}
+
+func (a *Allowlist) hasID(id string) bool {
+	for i := range a.Entries {
+		if a.Entries[i].ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // Remove removes an entry by ID. Returns true if found and removed.
@@ -135,9 +156,9 @@ func (a *Allowlist) Remove(id string) bool {
 	return false
 }
 
-// MatchesAllow returns the first matching non-expired entry for the given
+// Matches returns the first matching non-expired entry for the given
 // command and ruleID. Expired entries are discarded during the scan.
-func (a *Allowlist) MatchesAllow(command, ruleID string) *Entry {
+func (a *Allowlist) Matches(command, ruleID string) *Entry {
 	now := time.Now()
 	for i := range a.Entries {
 		e := &a.Entries[i]
@@ -157,45 +178,12 @@ func (a *Allowlist) MatchesAllow(command, ruleID string) *Entry {
 				return e
 			}
 		case "rule":
-			if matchRule(e.Value, ruleID) {
+			if matchutil.MatchRule(e.Value, ruleID) {
 				return e
 			}
 		}
 	}
 	return nil
-}
-
-// matchRule matches a rule ID pattern against a concrete rule ID.
-// Supports * as a wildcard for any sequence of characters (including empty).
-// Duplicated from override package to avoid coupling.
-func matchRule(pattern, ruleID string) bool {
-	if pattern == "*" {
-		return true
-	}
-	if !strings.Contains(pattern, "*") {
-		return pattern == ruleID
-	}
-	segments := strings.Split(pattern, "*")
-
-	// The ruleID must start with the first segment.
-	if !strings.HasPrefix(ruleID, segments[0]) {
-		return false
-	}
-	// Walk through ruleID, matching each segment in order.
-	remaining := ruleID[len(segments[0]):]
-	for _, seg := range segments[1:] {
-		idx := strings.Index(remaining, seg)
-		if idx < 0 {
-			return false
-		}
-		remaining = remaining[idx+len(seg):]
-	}
-	// If the pattern does not end with *, the ruleID must end exactly
-	// at the last segment (no trailing characters allowed).
-	if !strings.HasSuffix(pattern, "*") && remaining != "" {
-		return false
-	}
-	return true
 }
 
 // ---------- Token management ----------
@@ -328,14 +316,14 @@ func AllowlistPath(token string) string {
 
 // ---------- HMAC helpers ----------
 
-// computeMAC computes an HMAC-SHA256 over "kind|value|expiresUnix" and
+// computeMAC computes an HMAC-SHA256 over "action|kind|value|expiresUnix" and
 // returns the hex-encoded result. For a zero ExpiresAt, unix timestamp 0 is used.
-func computeMAC(secret []byte, kind, value string, expiresAt time.Time) string {
+func computeMAC(secret []byte, action, kind, value string, expiresAt time.Time) string {
 	var unix int64
 	if !expiresAt.IsZero() {
 		unix = expiresAt.Unix()
 	}
-	msg := kind + "|" + value + "|" + strconv.FormatInt(unix, 10)
+	msg := action + "|" + kind + "|" + value + "|" + strconv.FormatInt(unix, 10)
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(msg))
 	return hex.EncodeToString(mac.Sum(nil))
@@ -343,18 +331,21 @@ func computeMAC(secret []byte, kind, value string, expiresAt time.Time) string {
 
 // verifyMAC recomputes the HMAC for the entry and compares it with the stored MAC.
 func verifyMAC(secret []byte, e *Entry) bool {
-	expected := computeMAC(secret, e.Kind, e.Value, e.ExpiresAt)
+	expected := computeMAC(secret, e.Action, e.Kind, e.Value, e.ExpiresAt)
 	return hmac.Equal([]byte(expected), []byte(e.MAC))
 }
 
 // ---------- ID generation ----------
 
-// generateID creates a short ID like "sa-7f3a" (4 hex chars from 2 random bytes).
-// Falls back to a timestamp-based ID if random generation fails.
+// generateID creates a short ID like "sa-0123abcd4567ef89" (16 hex chars).
+// Falls back to a timestamp/counter-based ID if random generation fails.
 func generateID() string {
-	b := make([]byte, 2)
+	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("sa-%04x", time.Now().UnixNano()&0xFFFF)
+		return fmt.Sprintf(
+			"sa-%016x",
+			uint64(time.Now().UnixNano())^atomic.AddUint64(&fallbackIDCounter, 1),
+		)
 	}
 	return "sa-" + hex.EncodeToString(b)
 }

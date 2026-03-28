@@ -8,75 +8,125 @@
       "keywords": [
         "gh"
       ],
-      "safe_patterns": [
-        {
-          "name": "gh-actions-secret-list",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+secret\\s+list\\b"
-        },
-        {
-          "name": "gh-actions-variable-list",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+variable\\s+list\\b"
-        },
-        {
-          "name": "gh-actions-workflow-list",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+workflow\\s+list\\b"
-        },
-        {
-          "name": "gh-actions-workflow-view",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+workflow\\s+view\\b"
-        },
-        {
-          "name": "gh-actions-run-list",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+run\\s+list\\b"
-        },
-        {
-          "name": "gh-actions-run-view",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+run\\s+view\\b"
-        },
-        {
-          "name": "gh-actions-api-explicit-get",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+GET\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "gh-actions-secret-remove",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+secret\\s+(?:delete|remove)\\b",
+          "when": {
+            "command": [
+              "gh"
+            ],
+            "subcommand": [
+              "secret"
+            ],
+            "arg_exact": [
+              "delete",
+              "remove"
+            ]
+          },
           "reason": "gh secret delete/remove deletes GitHub Actions secrets. This can break CI and may be hard to recover.",
           "severity": "high",
           "explanation": "Deleting a GitHub Actions secret removes it from the repository, organization, or environment. Workflows using this secret will fail with authentication or configuration errors. Secret values are not recoverable after deletion.\n\nSafer alternatives:\n- gh secret list: Review existing secrets first\n- Update the secret value instead of deleting\n- Check workflow files for secret usage before removing"
         },
         {
           "name": "gh-actions-variable-remove",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+variable\\s+(?:delete|remove)\\b",
+          "when": {
+            "command": [
+              "gh"
+            ],
+            "subcommand": [
+              "variable"
+            ],
+            "arg_exact": [
+              "delete",
+              "remove"
+            ]
+          },
           "reason": "gh variable delete/remove deletes GitHub Actions variables. This can break workflows.",
           "severity": "medium",
           "explanation": "Removing a GitHub Actions variable makes it unavailable to all workflows that reference it. Unlike secrets, variable values are visible, but workflows may fail with undefined variable errors after deletion.\n\nSafer alternatives:\n- gh variable list: Review existing variables first\n- gh variable set: Update value instead of removing\n- Search workflows for variable usage before removing"
         },
         {
           "name": "gh-actions-workflow-disable",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+workflow\\s+disable\\b",
+          "when": {
+            "command": [
+              "gh"
+            ],
+            "subcommand": [
+              "workflow"
+            ],
+            "arg_exact": [
+              "disable"
+            ]
+          },
           "reason": "gh workflow disable disables workflows. This is reversible, but can disrupt CI.",
           "severity": "low",
           "explanation": "Disabling a workflow prevents it from running on any triggers. This is reversible with 'gh workflow enable', but can disrupt CI/CD pipelines, scheduled jobs, and automated deployments while disabled.\n\nSafer alternatives:\n- gh workflow list: Review workflow status first\n- gh workflow view: Check workflow details\n- Use workflow_dispatch for manual control instead"
         },
         {
           "name": "gh-actions-run-cancel",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+run\\s+cancel\\b",
+          "when": {
+            "command": [
+              "gh"
+            ],
+            "subcommand": [
+              "run"
+            ],
+            "arg_exact": [
+              "cancel"
+            ]
+          },
           "reason": "gh run cancel cancels a running workflow. This is reversible, but may disrupt deployments.",
           "severity": "low",
           "explanation": "Canceling a workflow run stops it mid-execution. Any in-progress deployments, tests, or builds will be interrupted. The run can be re-triggered, but partial work may leave systems in an inconsistent state.\n\nSafer alternatives:\n- gh run view: Check run status and progress first\n- gh run list: Review running workflows\n- Wait for natural completion if possible"
         },
         {
           "name": "gh-actions-api-delete-secrets",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*\\b/?repos/[^\\s/]+/[^\\s/]+/actions/secrets\\b",
+          "when": {
+            "command": [
+              "gh"
+            ],
+            "subcommand": [
+              "api"
+            ],
+            "flag": [
+              "-X",
+              "--method"
+            ],
+            "arg_contains": [
+              "actions/secrets"
+            ]
+          },
+          "unless": {
+            "arg_exact": [
+              "GET"
+            ]
+          },
           "reason": "gh api DELETE against /actions/secrets deletes GitHub Actions secrets.",
           "severity": "high",
           "explanation": "Making DELETE requests to the GitHub Actions secrets API removes secrets from the repository. This bypasses CLI confirmations and directly modifies repository settings. Workflows will fail when referencing deleted secrets.\n\nSafer alternatives:\n- Use gh secret delete for safer deletion with prompts\n- gh api GET first: Verify secret exists\n- Prefer CLI commands over direct API calls"
         },
         {
           "name": "gh-actions-api-delete-variables",
-          "regex": "gh(?>\\s+--?[A-Za-z][A-Za-z0-9-]*\\b(?:\\s+(?!(?:secret|variable|workflow|run|api)\\b)\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*\\b/?repos/[^\\s/]+/[^\\s/]+/actions/variables\\b",
+          "when": {
+            "command": [
+              "gh"
+            ],
+            "subcommand": [
+              "api"
+            ],
+            "flag": [
+              "-X",
+              "--method"
+            ],
+            "arg_contains": [
+              "actions/variables"
+            ]
+          },
+          "unless": {
+            "arg_exact": [
+              "GET"
+            ]
+          },
           "reason": "gh api DELETE against /actions/variables deletes GitHub Actions variables.",
           "severity": "medium",
           "explanation": "Making DELETE requests to the GitHub Actions variables API removes variables from the repository. This bypasses CLI confirmations and directly modifies repository settings. Workflows referencing these variables will fail.\n\nSafer alternatives:\n- Use gh variable delete for safer deletion with prompts\n- gh api GET first: Verify variable exists\n- Prefer CLI commands over direct API calls"
@@ -91,61 +141,77 @@
         "glab",
         "gitlab-runner"
       ],
-      "safe_patterns": [
-        {
-          "name": "glab-variable-list",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+variable\\s+list\\b"
-        },
-        {
-          "name": "glab-ci-list",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+ci\\s+list\\b"
-        },
-        {
-          "name": "glab-ci-view",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+ci\\s+view\\b"
-        },
-        {
-          "name": "glab-ci-status",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+ci\\s+status\\b"
-        },
-        {
-          "name": "gitlab-runner-list",
-          "regex": "gitlab-runner(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+list\\b"
-        },
-        {
-          "name": "gitlab-runner-status",
-          "regex": "gitlab-runner(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+status\\b"
-        },
-        {
-          "name": "glab-api-explicit-get",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+GET\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "glab-variable-delete",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+variable\\s+delete\\b",
+          "when": {
+            "command": [
+              "glab"
+            ],
+            "subcommand": [
+              "variable"
+            ],
+            "arg_exact": [
+              "delete"
+            ]
+          },
           "reason": "glab variable delete removes CI variables and can break pipelines.",
           "severity": "high",
           "explanation": "Deleting a GitLab CI/CD variable removes it from the project, group, or instance. Pipelines that depend on this variable will fail with undefined variable errors. Protected or masked variable values cannot be recovered after deletion.\n\nSafer alternatives:\n- glab variable list: Review existing variables first\n- Update variable value instead of deleting\n- Check .gitlab-ci.yml for variable usage before removing"
         },
         {
           "name": "glab-ci-delete",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+ci\\s+delete\\b",
+          "when": {
+            "command": [
+              "glab"
+            ],
+            "subcommand": [
+              "ci"
+            ],
+            "arg_exact": [
+              "delete"
+            ]
+          },
           "reason": "glab ci delete removes pipeline artifacts or pipelines.",
           "severity": "medium",
           "explanation": "Deleting pipelines or artifacts removes build history, job logs, and generated files. This affects debugging capabilities and audit trails. Artifacts needed for deployments or releases will no longer be available.\n\nSafer alternatives:\n- glab ci list: Review pipelines before deletion\n- glab ci view: Inspect pipeline details\n- Download artifacts before deletion if needed"
         },
         {
           "name": "glab-api-delete-variables",
-          "regex": "glab(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+api\\b.*(?:-X|--method)\\s+DELETE\\b.*\\bvariables\\b",
+          "when": {
+            "command": [
+              "glab"
+            ],
+            "subcommand": [
+              "api"
+            ],
+            "flag": [
+              "-X",
+              "--method"
+            ],
+            "arg_contains": [
+              "variables"
+            ]
+          },
+          "unless": {
+            "arg_exact": [
+              "GET"
+            ]
+          },
           "reason": "glab api DELETE against variables endpoints removes CI variables.",
           "severity": "high",
           "explanation": "Making DELETE requests to GitLab variables API removes CI/CD variables directly. This bypasses CLI confirmations and immediately affects all pipelines using these variables. Protected variable values cannot be recovered.\n\nSafer alternatives:\n- Use glab variable delete for safer deletion\n- GET request first: Verify variable exists\n- Prefer CLI commands over direct API calls"
         },
         {
           "name": "gitlab-runner-unregister",
-          "regex": "gitlab-runner(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+unregister\\b",
+          "when": {
+            "command": [
+              "gitlab-runner"
+            ],
+            "subcommand": [
+              "unregister"
+            ]
+          },
           "reason": "gitlab-runner unregister removes runners and can halt CI.",
           "severity": "critical",
           "explanation": "Unregistering a GitLab runner removes it from the GitLab instance. Jobs assigned to this runner will be stuck pending or fail. With --all-runners, all runners on the machine are removed, potentially halting all CI/CD for multiple projects.\n\nSafer alternatives:\n- gitlab-runner list: Review registered runners first\n- Pause the runner in GitLab UI instead\n- Verify replacement runners are available before removing"
@@ -161,83 +227,94 @@
         "jenkins",
         "doDelete"
       ],
-      "safe_patterns": [
-        {
-          "name": "jenkins-cli-list-jobs",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+list-jobs\\b"
-        },
-        {
-          "name": "jenkins-cli-get-job",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+get-job\\b"
-        },
-        {
-          "name": "jenkins-cli-build",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+build\\b"
-        },
-        {
-          "name": "jenkins-cli-who-am-i",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+who-am-i\\b"
-        },
-        {
-          "name": "jenkins-cli-list-views",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+list-views\\b"
-        },
-        {
-          "name": "jenkins-cli-list-plugins",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+list-plugins\\b"
-        },
-        {
-          "name": "jenkins-cli-get-node",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+get-node\\b"
-        },
-        {
-          "name": "jenkins-cli-get-credentials",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+get-credentials\\b"
-        },
-        {
-          "name": "jenkins-curl-explicit-get",
-          "regex": "curl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+(?:-X|--request)\\s+GET\\b.*(?:jenkins|/job/|/api/)"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "jenkins-cli-delete-job",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete-job\\b",
+          "when": {
+            "command": [
+              "jenkins-cli"
+            ],
+            "subcommand": [
+              "delete-job"
+            ]
+          },
           "reason": "jenkins-cli delete-job deletes Jenkins jobs and can break pipelines.",
           "severity": "critical",
           "explanation": "Deleting a Jenkins job removes the job configuration, build history, and all associated artifacts. Downstream jobs that depend on this job will fail. The job definition and history cannot be recovered without backups.\n\nSafer alternatives:\n- list-jobs: Review jobs before deletion\n- get-job: Export job XML configuration first\n- Disable the job instead of deleting"
         },
         {
           "name": "jenkins-cli-delete-node",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete-node\\b",
+          "when": {
+            "command": [
+              "jenkins-cli"
+            ],
+            "subcommand": [
+              "delete-node"
+            ]
+          },
           "reason": "jenkins-cli delete-node deletes Jenkins nodes and can halt CI.",
           "severity": "high",
           "explanation": "Removing a Jenkins node (agent) disconnects it from the controller. Jobs configured to run on this node will fail or remain pending. Any running builds on the node will be aborted immediately.\n\nSafer alternatives:\n- get-node: Review node configuration first\n- Take node offline temporarily instead\n- Verify jobs don't require this specific node"
         },
         {
           "name": "jenkins-cli-delete-credentials",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete-credentials\\b",
+          "when": {
+            "command": [
+              "jenkins-cli"
+            ],
+            "subcommand": [
+              "delete-credentials"
+            ]
+          },
           "reason": "jenkins-cli delete-credentials removes stored credentials.",
           "severity": "high",
           "explanation": "Deleting credentials from Jenkins removes them from the credential store. Jobs and pipelines using these credentials will fail authentication. Credential values (passwords, tokens, keys) cannot be recovered after deletion.\n\nSafer alternatives:\n- get-credentials: Review credential metadata first\n- Update credentials instead of deleting\n- Search Jenkinsfiles for credential usage"
         },
         {
           "name": "jenkins-cli-delete-builds",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete-builds\\b",
+          "when": {
+            "command": [
+              "jenkins-cli"
+            ],
+            "subcommand": [
+              "delete-builds"
+            ]
+          },
           "reason": "jenkins-cli delete-builds removes build history and artifacts.",
           "severity": "medium",
           "explanation": "Deleting builds removes build records, console logs, and artifacts for the specified build range. This affects audit trails, debugging capabilities, and any artifacts needed for deployments. Build history cannot be recovered.\n\nSafer alternatives:\n- list-jobs: Review job builds first\n- Download artifacts before deletion\n- Use build retention policies instead"
         },
         {
           "name": "jenkins-cli-delete-view",
-          "regex": "(?:jenkins-cli|java\\s+-jar\\s+\\S*jenkins-cli\\.jar)(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete-view\\b",
+          "when": {
+            "command": [
+              "jenkins-cli"
+            ],
+            "subcommand": [
+              "delete-view"
+            ]
+          },
           "reason": "jenkins-cli delete-view removes Jenkins views.",
           "severity": "low",
           "explanation": "Deleting a Jenkins view removes the view configuration. Jobs included in the view are not deleted, but the organizational structure is lost. Users relying on this view for job navigation will be affected.\n\nSafer alternatives:\n- list-views: Review views before deletion\n- Export view configuration if custom filters are used\n- Create a replacement view before removing"
         },
         {
           "name": "jenkins-curl-do-delete",
-          "regex": "curl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+(?:-X|--request)\\s+POST\\b.*\\bdoDelete\\b",
+          "when": {
+            "command": [
+              "curl"
+            ],
+            "flag": [
+              "-X",
+              "--request"
+            ],
+            "arg_exact": [
+              "POST"
+            ],
+            "arg_contains": [
+              "doDelete"
+            ]
+          },
           "reason": "curl POST to Jenkins doDelete endpoints deletes jobs or resources.",
           "severity": "critical",
           "explanation": "POSTing to Jenkins doDelete endpoints triggers immediate deletion of jobs, builds, or other resources. This bypasses CLI safety checks and directly calls the internal deletion API. Resources cannot be recovered without backups.\n\nSafer alternatives:\n- Use jenkins-cli for safer deletion with confirmation\n- GET the resource configuration first for backup\n- Avoid direct API calls for destructive operations"
@@ -251,87 +328,109 @@
       "keywords": [
         "circleci"
       ],
-      "safe_patterns": [
-        {
-          "name": "circleci-context-list",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+context\\s+list\\b"
-        },
-        {
-          "name": "circleci-orb-list",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+orb\\s+list\\b"
-        },
-        {
-          "name": "circleci-orb-info",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+orb\\s+info\\b"
-        },
-        {
-          "name": "circleci-pipeline-list",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+pipeline\\s+list\\b"
-        },
-        {
-          "name": "circleci-project-list",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+project\\s+list\\b"
-        },
-        {
-          "name": "circleci-namespace-list",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+namespace\\s+list\\b"
-        },
-        {
-          "name": "circleci-config-validate",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+config\\s+validate\\b"
-        },
-        {
-          "name": "circleci-local-execute",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+local\\s+execute\\b"
-        },
-        {
-          "name": "circleci-policy-status",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+policy\\s+status\\b"
-        },
-        {
-          "name": "circleci-diagnostic",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+diagnostic\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "circleci-context-delete",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+context\\s+delete\\b",
+          "when": {
+            "command": [
+              "circleci"
+            ],
+            "subcommand": [
+              "context"
+            ],
+            "arg_exact": [
+              "delete"
+            ]
+          },
           "reason": "circleci context delete removes contexts and their secrets.",
           "severity": "critical",
           "explanation": "Deleting a CircleCI context removes all secrets stored within it. Any pipeline jobs that reference this context will fail immediately. Secret values cannot be recovered after deletion and must be manually re-entered.\n\nSafer alternatives:\n- circleci context list: Review contexts before deletion\n- circleci context show: Inspect context secrets (names only)\n- Document secret names before removing context"
         },
         {
           "name": "circleci-context-remove-secret",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+context\\s+remove-secret\\b",
+          "when": {
+            "command": [
+              "circleci"
+            ],
+            "subcommand": [
+              "context"
+            ],
+            "arg_exact": [
+              "remove-secret"
+            ]
+          },
           "reason": "circleci context remove-secret deletes secrets from a context.",
           "severity": "high",
           "explanation": "Removing a secret from a context makes it unavailable to all jobs using that context. Pipelines depending on this secret will fail. The secret value cannot be retrieved after removal.\n\nSafer alternatives:\n- circleci context show: Review secrets in context first\n- Update the secret value instead of removing\n- Document secret value externally before removal"
         },
         {
           "name": "circleci-orb-delete",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+orb\\s+delete\\b",
+          "when": {
+            "command": [
+              "circleci"
+            ],
+            "subcommand": [
+              "orb"
+            ],
+            "arg_exact": [
+              "delete"
+            ]
+          },
           "reason": "circleci orb delete removes an orb from the registry.",
           "severity": "high",
           "explanation": "Deleting an orb removes it from the CircleCI orb registry. Any pipeline using this orb will fail on the next run. If other teams or projects depend on this orb, their CI/CD will break without warning.\n\nSafer alternatives:\n- circleci orb info: Review orb details and usage\n- Deprecate the orb instead of deleting\n- Check for dependent projects before deletion"
         },
         {
           "name": "circleci-namespace-delete",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+namespace\\s+delete\\b",
+          "when": {
+            "command": [
+              "circleci"
+            ],
+            "subcommand": [
+              "namespace"
+            ],
+            "arg_exact": [
+              "delete"
+            ]
+          },
           "reason": "circleci namespace delete removes an orb namespace.",
           "severity": "critical",
           "explanation": "Deleting a namespace removes all orbs within that namespace from the registry. This is a cascading deletion that affects every orb published under this namespace. All pipelines using any orb from this namespace will fail.\n\nSafer alternatives:\n- circleci namespace list: Review namespaces first\n- circleci orb list: Inventory orbs in namespace\n- Delete individual orbs instead if needed"
         },
         {
           "name": "circleci-pipeline-delete",
-          "regex": "circleci(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+pipeline\\s+delete\\b",
+          "when": {
+            "command": [
+              "circleci"
+            ],
+            "subcommand": [
+              "pipeline"
+            ],
+            "arg_exact": [
+              "delete"
+            ]
+          },
           "reason": "circleci pipeline delete removes pipeline history.",
           "severity": "medium",
           "explanation": "Deleting pipeline history removes records of past builds, including logs, artifacts, and test results. This affects audit trails and debugging capabilities. The history cannot be recovered once deleted.\n\nSafer alternatives:\n- circleci pipeline list: Review pipelines before deletion\n- Export logs and artifacts before deletion\n- Consider archiving rather than deleting"
         },
         {
           "name": "circleci-api-delete-envvar",
-          "regex": "curl(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+(?:-X|--request)\\s+DELETE\\b.*circleci\\.com/api/[^\\s]*\\b(?:envvar|environment-variable)\\b",
+          "when": {
+            "command": [
+              "curl"
+            ],
+            "flag": [
+              "-X",
+              "--request"
+            ],
+            "arg_exact": [
+              "DELETE"
+            ],
+            "arg_contains": [
+              "circleci.com/api"
+            ]
+          },
           "reason": "curl DELETE against CircleCI envvar endpoints removes environment variables.",
           "severity": "high",
           "explanation": "Making DELETE requests to CircleCI environment variable endpoints removes variables from projects. Pipelines depending on these variables will fail on next run. Variable values cannot be recovered after deletion.\n\nSafer alternatives:\n- GET request first: Review variable exists\n- Update variable value instead of deleting\n- Use circleci CLI for safer operations"

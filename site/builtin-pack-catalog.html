@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Wheels Built-in Pack Catalog</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --paper: #fffaf2;
+      --ink: #1f1a17;
+      --muted: #61564c;
+      --line: #d7cbbb;
+      --accent: #0f766e;
+      --accent-soft: #daf1ea;
+      --warm: #b45309;
+      --warm-soft: #fde6c2;
+      --shadow: 0 18px 45px rgba(61, 47, 34, 0.12);
+      --radius: 18px;
+      --mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 30%),
+        radial-gradient(circle at top left, rgba(180, 83, 9, 0.1), transparent 24%),
+        linear-gradient(180deg, #f8f2e8 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: var(--sans);
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      width: min(1280px, calc(100% - 32px));
+      margin: 24px auto 64px;
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero,
+    .toolbar,
+    .section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 2px);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 34px 34px 28px;
+      background:
+        linear-gradient(135deg, rgba(15, 118, 110, 0.09), rgba(255, 250, 242, 0) 60%),
+        linear-gradient(180deg, rgba(180, 83, 9, 0.08), rgba(255, 250, 242, 0));
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(31, 26, 23, 0.05);
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    h1 {
+      margin: 16px 0 10px;
+      font-size: clamp(2rem, 3vw, 3.15rem);
+      line-height: 1.02;
+      max-width: 12ch;
+    }
+
+    .hero p,
+    .section > p {
+      margin: 0;
+      max-width: 78ch;
+      color: var(--muted);
+      line-height: 1.58;
+    }
+
+    .hero-meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .stat {
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(215, 203, 187, 0.9);
+      background: rgba(255, 255, 255, 0.62);
+    }
+
+    .stat strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .stat span {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .toolbar {
+      padding: 20px 24px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .toolbar-top {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .search-wrap input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .search-wrap input:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.18);
+      border-color: rgba(15, 118, 110, 0.35);
+    }
+
+    .results {
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .category-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .category-chip {
+      border: 1px solid rgba(31, 26, 23, 0.08);
+      background: rgba(31, 26, 23, 0.04);
+      color: var(--muted);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+      transition: 150ms ease;
+    }
+
+    .category-chip:hover {
+      border-color: rgba(15, 118, 110, 0.28);
+      color: var(--ink);
+    }
+
+    .category-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .section {
+      padding: 24px 26px 28px;
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 1.45rem;
+    }
+
+    .callout {
+      padding: 16px 18px;
+      border-radius: 16px;
+      margin-top: 16px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+      background: var(--accent-soft);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.92rem;
+    }
+
+    .catalog {
+      display: grid;
+      gap: 24px;
+    }
+
+    .category-section {
+      display: grid;
+      gap: 14px;
+    }
+
+    .category-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(215, 203, 187, 0.8);
+    }
+
+    .category-head h3 {
+      margin: 0;
+      font-size: 1.22rem;
+      text-transform: capitalize;
+    }
+
+    .category-head span {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .pack-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .pack-card {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(250, 244, 235, 0.84));
+      min-height: 100%;
+    }
+
+    .pack-top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .pack-id {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 9px;
+      background: rgba(31, 26, 23, 0.06);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      word-break: break-word;
+    }
+
+    .pack-card h4 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .pack-card p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      max-width: none;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .field strong {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      line-height: 1.3;
+      border: 1px solid rgba(31, 26, 23, 0.08);
+      background: #fff;
+      color: var(--ink);
+      font-family: var(--mono);
+    }
+
+    .chip.sub {
+      background: rgba(15, 118, 110, 0.06);
+      border-color: rgba(15, 118, 110, 0.14);
+    }
+
+    .empty-state {
+      padding: 28px;
+      border-radius: 18px;
+      border: 1px dashed rgba(97, 86, 76, 0.35);
+      color: var(--muted);
+      text-align: center;
+      background: rgba(255, 255, 255, 0.45);
+    }
+
+    @media (max-width: 980px) {
+      .hero-meta,
+      .pack-grid,
+      .toolbar-top {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="eyebrow">Training Wheels / Reference</div>
+      <h1>Built-in Pack Catalog</h1>
+      <p>
+        This is a human-readable view of the built-in pack set shipped with TW. It groups packs by category and shows the command families each pack structurally matches, rather than dumping the raw extracted text.
+      </p>
+      <div class="hero-meta">
+        <div class="stat">
+          <strong>Source</strong>
+          <span><code>packs/json/*.json</code></span>
+        </div>
+        <div class="stat">
+          <strong>View</strong>
+          <span>Grouped by category</span>
+        </div>
+        <div class="stat">
+          <strong>Content</strong>
+          <span>Commands + subcommands</span>
+        </div>
+        <div class="stat">
+          <strong>Related Doc</strong>
+          <span><a href="./project-setup-and-hook-flow.html">Architecture walkthrough</a></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>How To Read This</h2>
+      <p>
+        Each card is one built-in pack. The <code>Commands</code> list is the unique top-level <code>when.command</code> set across the pack's structural patterns. The <code>Subcommands</code> list is the unique <code>when.subcommand</code> set when the pack uses subcommand matching.
+      </p>
+      <div class="callout">
+        <strong>Important caveat</strong>
+        Some patterns depend more on flags and arguments than subcommands, so this page is a compact browsing aid, not a full rule dump. The underlying policy still lives in the JSON pack files.
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <div class="toolbar-top">
+        <label class="search-wrap">
+          <input id="search" type="search" placeholder="Filter by pack id, name, command, subcommand, or category">
+        </label>
+        <div id="results" class="results"></div>
+      </div>
+      <div id="categories" class="category-bar"></div>
+    </section>
+
+    <section class="section">
+      <h2>Catalog</h2>
+      <div id="catalog" class="catalog"></div>
+    </section>
+  </div>
+
+  <script>
+    const PACK_GROUPS = [{"category":"ai","packs":[{"id":"ai.huggingface","name":"Hugging Face CLI","description":"Protects against destructive Hugging Face CLI operations like delete-cache","commands":["huggingface-cli"],"subcommands":["delete-cache"]},{"id":"ai.wandb","name":"Weights & Biases (W&B)","description":"Protects against destructive W&B operations like sweep stop and artifact removal","commands":["wandb"],"subcommands":["artifact","sweep"]}]},{"category":"apigateway","packs":[{"id":"apigateway.aws","name":"AWS API Gateway","description":"Protects against destructive AWS API Gateway CLI operations for both REST APIs and HTTP APIs.","commands":["aws"],"subcommands":["apigateway","apigatewayv2","delete-api","delete-api-key","delete-authorizer","delete-deployment","delete-domain-name","delete-integration","delete-integration-response","delete-method","delete-model","delete-resource","delete-rest-api","delete-route","delete-route-response","delete-stage","delete-usage-plan"]},{"id":"apigateway.kong","name":"Kong API Gateway","description":"Protects against destructive Kong Gateway CLI, deck CLI, and Admin API operations.","commands":["curl","deck"],"subcommands":[]},{"id":"apigateway.apigee","name":"Google Apigee","description":"Protects against destructive Google Apigee CLI and apigeecli operations.","commands":["apigeecli","gcloud"],"subcommands":["apigee","apis","apps","delete","deployments","developers","environments","envs","keyvaluemaps","organizations","orgs","products","targetservers","undeploy"]}]},{"category":"backup","packs":[{"id":"backup.borg","name":"BorgBackup","description":"Protects against destructive borg operations like delete, prune, compact, and recreate.","commands":["borg"],"subcommands":["break-lock","compact","delete","prune","recreate"]},{"id":"backup.rclone","name":"Rclone","description":"Protects against destructive rclone operations like sync, delete, purge, dedupe, and move.","commands":["rclone"],"subcommands":["cleanup","dedupe","delete","deletefile","move","purge","sync"]},{"id":"backup.restic","name":"Restic","description":"Protects against destructive restic operations like forgetting snapshots, pruning data, removing keys, and cache cleanup.","commands":["restic"],"subcommands":["cache","forget","key","prune","unlock"]},{"id":"backup.velero","name":"Velero","description":"Protects against destructive velero operations like deleting backups, schedules, and locations.","commands":["velero"],"subcommands":["backup","backup-location","delete","restore","schedule","snapshot-location","uninstall"]}]},{"category":"cdn","packs":[{"id":"cdn.cloudflare_workers","name":"Cloudflare Workers","description":"Protects against destructive Cloudflare Workers, KV, R2, and D1 operations via the Wrangler CLI.","commands":["wrangler"],"subcommands":["bucket","d1","delete","deployments","kv:bulk","kv:key","kv:namespace","object","r2","rollback"]},{"id":"cdn.fastly","name":"Fastly CDN","description":"Protects against destructive Fastly CLI operations like service, domain, backend, and VCL deletion.","commands":["fastly"],"subcommands":["acl","acl-entry","activate","backend","compute","delete","dictionary","dictionary-item","domain","logging","service","vcl","version"]},{"id":"cdn.cloudfront","name":"AWS CloudFront","description":"Protects against destructive AWS CloudFront operations like deleting distributions, cache policies, and functions.","commands":["aws"],"subcommands":["cloudfront","create-invalidation","delete-cache-policy","delete-distribution","delete-function","delete-key-group","delete-origin-request-policy","delete-response-headers-policy"]}]},{"category":"cicd","packs":[{"id":"cicd.github_actions","name":"GitHub Actions","description":"Protects against destructive GitHub Actions operations like deleting secrets/variables or using gh api DELETE against /actions endpoints.","commands":["gh"],"subcommands":["api","run","secret","variable","workflow"]},{"id":"cicd.gitlab_ci","name":"GitLab CI","description":"Protects against destructive GitLab CI/CD operations like deleting variables, removing artifacts, and unregistering runners.","commands":["gitlab-runner","glab"],"subcommands":["api","ci","unregister","variable"]},{"id":"cicd.jenkins","name":"Jenkins","description":"Protects against destructive Jenkins CLI/API operations like deleting jobs, nodes, credentials, or build history.","commands":["curl","jenkins-cli"],"subcommands":["delete-builds","delete-credentials","delete-job","delete-node","delete-view"]},{"id":"cicd.circleci","name":"CircleCI","description":"Protects against destructive CircleCI operations like deleting contexts, removing secrets, deleting orbs/namespaces, or removing pipelines.","commands":["circleci","curl"],"subcommands":["context","namespace","orb","pipeline"]}]},{"category":"cloud","packs":[{"id":"cloud.aws","name":"AWS CLI","description":"Protects against destructive AWS CLI operations like terminate-instances, delete-db-instance, and s3 rm --recursive","commands":["aws"],"subcommands":["cloudformation","dynamodb","ec2","ecr","eks","iam","lambda","logs","rds","s3","s3api"]},{"id":"cloud.gcp","name":"Google Cloud SDK","description":"Protects against destructive gcloud operations like instances delete, sql instances delete, and gsutil rm -r","commands":["gcloud","gsutil"],"subcommands":["artifacts","compute","container","firestore","functions","projects","pubsub","rb","rm","sql"]},{"id":"cloud.azure","name":"Azure CLI","description":"Protects against destructive Azure CLI operations like vm delete, storage account delete, and resource group delete","commands":["az"],"subcommands":["acr","aks","cosmosdb","functionapp","group","keyvault","network","sql","storage","vm","webapp"]},{"id":"cloud.digitalocean","name":"DigitalOcean","description":"Protects against destructive DigitalOcean operations like droplet deletion","commands":["doctl"],"subcommands":["compute"]},{"id":"cloud.heroku","name":"Heroku","description":"Protects against destructive Heroku operations like apps:destroy","commands":["heroku"],"subcommands":["apps:destroy"]},{"id":"cloud.vercel","name":"Vercel","description":"Protects against destructive Vercel operations like vercel rm","commands":["vercel"],"subcommands":["remove","rm"]},{"id":"cloud.netlify","name":"Netlify","description":"Protects against destructive Netlify operations like sites:delete","commands":["netlify"],"subcommands":["sites:delete"]}]},{"category":"containers","packs":[{"id":"containers.docker","name":"Docker","description":"Protects against destructive Docker operations like system prune, volume prune, and force removal","commands":["docker"],"subcommands":["container","image","kill","network","rm","rmi","stop","system","volume"]},{"id":"containers.compose","name":"Docker Compose","description":"Protects against destructive Docker Compose operations like 'down -v' which removes volumes","commands":["docker","docker-compose"],"subcommands":["down","rm"]},{"id":"containers.podman","name":"Podman","description":"Protects against destructive Podman operations like system prune, volume prune, and force removal","commands":["podman"],"subcommands":["container","image","pod","rm","rmi","system","volume"]}]},{"category":"core","packs":[{"id":"core.git","name":"Core Git","description":"Protects against destructive git commands that can lose uncommitted work, rewrite history, or destroy stashes","commands":["git"],"subcommands":["branch","checkout","clean","push","reset","restore","stash","tag"]},{"id":"core.filesystem","name":"Core Filesystem","description":"Protects against dangerous rm -rf commands outside temp directories","commands":["rm"],"subcommands":[]},{"id":"core.tw","name":"Core TW","description":"Prevents agents from disabling TW protections via tw override or direct config file writes","commands":["bash","cat","echo","printf","sh","tee","tw","zsh"],"subcommands":["override","rule"]}]},{"category":"database","packs":[{"id":"database.postgresql","name":"PostgreSQL","description":"Protects against destructive PostgreSQL operations like DROP DATABASE, TRUNCATE, and dropdb","commands":["clickhouse-client","cqlsh","dropdb","mysql","pg_dump","psql","snowsql","sqlite3"],"subcommands":[]},{"id":"database.mysql","name":"MySQL/MariaDB","description":"Protects against destructive MySQL/MariaDB operations like DROP DATABASE, TRUNCATE, and mysqladmin drop","commands":["mariadb","mysql","mysqladmin","mysqldump"],"subcommands":["drop"]},{"id":"database.mongodb","name":"MongoDB","description":"Protects against destructive MongoDB operations like dropDatabase, dropCollection, and remove without criteria","commands":["mongo","mongorestore","mongosh"],"subcommands":[]},{"id":"database.redis","name":"Redis","description":"Protects against destructive Redis operations like FLUSHALL, FLUSHDB, and mass key deletion","commands":["redis-cli"],"subcommands":[]},{"id":"database.sqlite","name":"SQLite","description":"Protects against destructive SQLite operations like DROP TABLE, DELETE without WHERE, and accidental data loss","commands":["sqlite3"],"subcommands":[]},{"id":"database.supabase","name":"Supabase","description":"Protects against destructive Supabase CLI operations including database resets, migration rollbacks, function/secret/storage deletion, project removal, and infrastructure changes","commands":["supabase"],"subcommands":["branches","config","db","delete","domains","down","functions","migration","network-restrictions","orgs","projects","push","remove","repair","reset","rm","secrets","shell","squash","sso","stop","storage","unset","update","vanity-subdomains"]},{"id":"database.cassandra","name":"Cassandra","description":"Protects against destructive Cassandra operations like DROP KEYSPACE, DROP TABLE, and TRUNCATE.","commands":["cqlsh"],"subcommands":[]},{"id":"database.clickhouse","name":"ClickHouse","description":"Protects against destructive ClickHouse operations like DROP DATABASE, DROP TABLE, and TRUNCATE.","commands":["clickhouse-client"],"subcommands":[]},{"id":"database.snowflake","name":"Snowflake","description":"Protects against destructive Snowflake operations like DROP DATABASE, DROP SCHEMA, and TRUNCATE.","commands":["snowsql"],"subcommands":[]}]},{"category":"dns","packs":[{"id":"dns.cloudflare","name":"Cloudflare DNS","description":"Protects against destructive Cloudflare DNS operations like record deletion, zone deletion, and targeted Terraform destroy.","commands":["curl","terraform","wrangler"],"subcommands":["delete","destroy","dns-records"]},{"id":"dns.route53","name":"AWS Route53","description":"Protects against destructive AWS Route53 DNS operations like hosted zone deletion and record set DELETE changes.","commands":["aws"],"subcommands":["change-resource-record-sets","delete-health-check","delete-hosted-zone","delete-query-logging-config","delete-reusable-delegation-set","delete-traffic-policy","route53"]},{"id":"dns.generic","name":"Generic DNS Tools","description":"Protects against destructive or risky DNS tooling usage (nsupdate deletes, zone transfers).","commands":["dig","nsupdate"],"subcommands":[]}]},{"category":"email","packs":[{"id":"email.ses","name":"AWS SES","description":"Protects against destructive AWS Simple Email Service operations like identity deletion, template deletion, and configuration set removal.","commands":["aws"],"subcommands":["delete-configuration-set","delete-contact-list","delete-dedicated-ip-pool","delete-email-identity","delete-email-template","delete-identity","delete-receipt-rule","delete-receipt-rule-set","delete-template","ses","sesv2"]},{"id":"email.sendgrid","name":"SendGrid","description":"Protects against destructive SendGrid API operations like template deletion, API key deletion, and domain authentication removal.","commands":["sendgrid"],"subcommands":[]},{"id":"email.mailgun","name":"Mailgun","description":"Protects against destructive Mailgun API operations like domain deletion, route deletion, and mailing list removal.","commands":["mailgun"],"subcommands":[]},{"id":"email.postmark","name":"Postmark","description":"Protects against destructive Postmark API operations like server deletion, template deletion, and sender signature removal.","commands":["postmarkapp"],"subcommands":[]}]},{"category":"featureflags","packs":[{"id":"featureflags.flipt","name":"Flipt","description":"Protects against destructive Flipt CLI and API operations.","commands":["curl","flipt"],"subcommands":["constraint","delete","distribution","flag","namespace","rule","segment","variant"]},{"id":"featureflags.launchdarkly","name":"LaunchDarkly","description":"Protects against destructive LaunchDarkly CLI and API operations.","commands":["curl","ldcli"],"subcommands":["archive","delete","environments","flags","metrics","projects","segments"]},{"id":"featureflags.split","name":"Split.io","description":"Protects against destructive Split.io CLI and API operations.","commands":["curl","split"],"subcommands":["delete","environments","kill","segments","splits","traffic-types","workspaces"]},{"id":"featureflags.unleash","name":"Unleash","description":"Protects against destructive Unleash CLI and API operations.","commands":["curl","unleash"],"subcommands":["api-keys","archive","delete","environments","features","projects","strategies"]}]},{"category":"infrastructure","packs":[{"id":"infrastructure.terraform","name":"Terraform","description":"Protects against destructive Terraform operations like destroy, taint, and apply with -auto-approve","commands":["terraform"],"subcommands":["apply","destroy","force-unlock","state","taint","workspace"]},{"id":"infrastructure.ansible","name":"Ansible","description":"Protects against destructive Ansible operations like dangerous shell commands and unchecked playbook runs","commands":["ansible","ansible-playbook"],"subcommands":[]},{"id":"infrastructure.pulumi","name":"Pulumi","description":"Protects against destructive Pulumi operations like destroy and up with -y (auto-approve)","commands":["pulumi"],"subcommands":["cancel","destroy","refresh","stack","state","up"]},{"id":"infrastructure.cdk","name":"AWS CDK","description":"Protects against destructive AWS CDK operations like cdk destroy","commands":["cdk"],"subcommands":["destroy"]},{"id":"infrastructure.serverless","name":"Serverless Framework","description":"Protects against destructive Serverless operations like sls remove","commands":["serverless","sls"],"subcommands":["remove"]}]},{"category":"kubernetes","packs":[{"id":"kubernetes.kubectl","name":"kubectl","description":"Protects against destructive kubectl operations like delete namespace, drain, and mass deletion","commands":["kubectl","kubectx"],"subcommands":["apply","config","cordon","delete","drain","scale","taint"]},{"id":"kubernetes.helm","name":"Helm","description":"Protects against destructive Helm operations like uninstall and rollback without dry-run","commands":["helm"],"subcommands":["delete","rollback","uninstall","upgrade"]},{"id":"kubernetes.kustomize","name":"Kustomize","description":"Protects against destructive Kustomize operations when combined with kubectl delete or applied without review","commands":["kubectl","kustomize"],"subcommands":["build","delete","kustomize"]}]},{"category":"loadbalancer","packs":[{"id":"loadbalancer.haproxy","name":"HAProxy","description":"Protects against destructive HAProxy load balancer operations like stopping the service or disabling backends via runtime API.","commands":["haproxy","rm","service","socat","systemctl"],"subcommands":["haproxy","stop"]},{"id":"loadbalancer.nginx","name":"nginx","description":"Protects against destructive nginx load balancer operations like stopping the service or deleting config files.","commands":["nginx","rm","service","systemctl"],"subcommands":["nginx","quit","stop"]},{"id":"loadbalancer.traefik","name":"Traefik","description":"Protects against destructive Traefik load balancer operations like stopping containers, deleting config, or API deletions.","commands":["curl","docker","docker-compose","kubectl","rm","service","systemctl"],"subcommands":["?:stop","delete","down","ingressroute","kill","rm","stop","traefik"]},{"id":"loadbalancer.elb","name":"AWS ELB","description":"Protects against destructive AWS Elastic Load Balancing (ELB/ALB/NLB) operations like deleting load balancers, target groups, or deregistering targets from live traffic.","commands":["aws"],"subcommands":["delete-listener","delete-load-balancer","delete-rule","delete-target-group","deregister-instances-from-load-balancer","deregister-targets","elb","elbv2"]}]},{"category":"messaging","packs":[{"id":"messaging.kafka","name":"Apache Kafka","description":"Protects against destructive Kafka CLI operations like deleting topics, removing consumer groups, resetting offsets, and deleting records.","commands":["kafka-acls","kafka-configs","kafka-consumer-groups","kafka-delete-records","kafka-topics","rpk"],"subcommands":["delete"]},{"id":"messaging.rabbitmq","name":"RabbitMQ","description":"Protects against destructive RabbitMQ operations like deleting queues/exchanges, purging queues, deleting vhosts, and resetting cluster state.","commands":["rabbitmqadmin","rabbitmqctl"],"subcommands":["delete","delete_vhost","exchange","force_reset","forget_cluster_node","purge","queue","reset"]},{"id":"messaging.nats","name":"NATS","description":"Protects against destructive NATS/JetStream operations like deleting streams, consumers, key-value entries, objects, and accounts.","commands":["nats"],"subcommands":["account","consumer","delete","kv","object","purge","stream"]},{"id":"messaging.sqs_sns","name":"AWS SQS/SNS","description":"Protects against destructive AWS SQS and SNS operations like deleting queues, purging messages, deleting topics, and removing subscriptions.","commands":["aws"],"subcommands":["delete-message","delete-message-batch","delete-platform-application","delete-queue","delete-topic","purge-queue","remove-permission","sns","sqs","unsubscribe"]}]},{"category":"monitoring","packs":[{"id":"monitoring.splunk","name":"Splunk","description":"Protects against destructive Splunk CLI/API operations like index removal and REST API DELETE calls","commands":["curl","splunk"],"subcommands":["clean","delete","eventdata","index","remove"]},{"id":"monitoring.datadog","name":"Datadog","description":"Protects against destructive Datadog CLI/API operations like deleting monitors and dashboards.","commands":["curl","datadog-ci","terraform"],"subcommands":["dashboards","delete","destroy","monitors"]},{"id":"monitoring.pagerduty","name":"PagerDuty","description":"Protects against destructive PagerDuty CLI/API operations like deleting services and schedules (which can break incident routing).","commands":["curl","pd"],"subcommands":["delete","escalation-policy","schedule","service","team","user"]},{"id":"monitoring.newrelic","name":"New Relic","description":"Protects against destructive New Relic CLI/API operations like deleting entities or alerting resources.","commands":["curl","newrelic"],"subcommands":["apm","application","delete","entity","synthetics","workload"]},{"id":"monitoring.prometheus","name":"Prometheus/Grafana","description":"Protects against destructive Prometheus/Grafana operations like deleting time series data or dashboards/datasources.","commands":["curl","grafana-cli","kubectl","rm"],"subcommands":["delete","plugins","uninstall"]}]},{"category":"package_managers","packs":[{"id":"package_managers","name":"Package Managers","description":"Protects against dangerous package manager operations like publishing packages and removing critical system packages","commands":["apt","apt-get","cargo","dnf","gem","gradle","gradlew","mvn","mvnw","npm","nuget","pip","pip3","pnpm","poetry","yarn","yum"],"subcommands":["autoremove","delete","deploy","deprecate","erase","install","publish","purge","push","remove","unpublish","yank"]}]},{"category":"payment","packs":[{"id":"payment.stripe","name":"Stripe","description":"Protects against destructive Stripe CLI/API operations like deleting webhook endpoints and customers, or rotating API keys without coordination.","commands":["curl","stripe"],"subcommands":["api","coupons","customers","delete","prices","products","roll","webhook"]},{"id":"payment.braintree","name":"Braintree","description":"Protects against destructive Braintree/PayPal payment operations like deleting customers or cancelling subscriptions via API/SDK calls.","commands":["braintree\\.Customer\\.delete","curl","gateway"],"subcommands":[]},{"id":"payment.square","name":"Square","description":"Protects against destructive Square CLI/API operations like deleting catalog objects or customers (which can break payment flows).","commands":["curl","square"],"subcommands":["catalog","delete"]}]},{"category":"platform","packs":[{"id":"platform.github","name":"GitHub Platform","description":"Protects against destructive GitHub CLI operations like deleting repositories, gists, releases, or SSH keys.","commands":["gh"],"subcommands":["api","gist","issue","release","repo","run","secret","ssh-key","variable"]},{"id":"platform.gitlab","name":"GitLab Platform","description":"Protects against destructive GitLab platform operations like deleting projects, releases, protected branches, and webhooks.","commands":["gitlab-rails","gitlab-rake","glab"],"subcommands":["api","release","repo","runner","variable"]}]},{"category":"remote","packs":[{"id":"remote.rsync","name":"rsync","description":"Protects against destructive rsync operations like --delete and its variants.","commands":["rsync"],"subcommands":[]},{"id":"remote.ssh","name":"ssh","description":"Protects against destructive SSH operations like remote command execution and key management.","commands":["ssh","ssh-add","ssh-keygen"],"subcommands":[]},{"id":"remote.scp","name":"scp","description":"Protects against destructive SCP operations like overwrites to system paths.","commands":["scp"],"subcommands":[]}]},{"category":"search","packs":[{"id":"search.elasticsearch","name":"Elasticsearch","description":"Protects against destructive Elasticsearch REST API operations like index deletion, delete-by-query, index close, and cluster setting changes.","commands":["curl","http"],"subcommands":[]},{"id":"search.opensearch","name":"OpenSearch","description":"Protects against destructive OpenSearch REST API operations and AWS CLI domain deletions.","commands":["aws","curl","http"],"subcommands":["delete-domain","delete-inbound-connection","delete-outbound-connection","delete-package","opensearch"]},{"id":"search.algolia","name":"Algolia","description":"Protects against destructive Algolia operations like deleting indices, clearing objects, removing rules/synonyms, and deleting API keys.","commands":["algolia"],"subcommands":["apikeys","clear","delete","indices","rules","synonyms"]},{"id":"search.meilisearch","name":"Meilisearch","description":"Protects against destructive Meilisearch REST API operations like index deletion, document deletion, delete-batch, and API key removal.","commands":["curl","http"],"subcommands":[]}]},{"category":"secrets","packs":[{"id":"secrets.vault","name":"HashiCorp Vault","description":"Protects against destructive Vault CLI operations like deleting secrets, disabling auth/secret engines, revoking leases/tokens, and deleting policies.","commands":["vault"],"subcommands":["auth","delete","destroy","disable","kv","lease","metadata","policy","revoke","secrets","token"]},{"id":"secrets.aws_secrets","name":"AWS Secrets Manager","description":"Protects against destructive AWS Secrets Manager and SSM Parameter Store operations like delete-secret and delete-parameter.","commands":["aws"],"subcommands":["delete-parameter","delete-parameters","delete-resource-policy","delete-secret","put-secret-value","remove-regions-from-replication","secretsmanager","ssm","update-secret"]},{"id":"secrets.onepassword","name":"1Password CLI","description":"Protects against destructive 1Password CLI operations like deleting items, documents, users, groups, and vaults.","commands":["op"],"subcommands":["connect","delete","document","group","item","token","user","vault"]},{"id":"secrets.doppler","name":"Doppler CLI","description":"Protects against destructive Doppler CLI operations like deleting secrets, configs, environments, or projects.","commands":["doppler"],"subcommands":["configs","delete","environments","projects","secrets"]},{"id":"secrets.bitwarden","name":"Bitwarden CLI","description":"Protects against destructive Bitwarden CLI operations like deleting, editing, or moving items.","commands":["bw"],"subcommands":["delete","edit","move"]},{"id":"secrets.gcp_secrets","name":"GCP Secret Manager","description":"Protects against destructive GCP Secret Manager operations like deleting secrets, destroying or disabling versions, and modifying IAM policies.","commands":["gcloud"],"subcommands":["secrets"]},{"id":"secrets.azure_keyvault","name":"Azure Key Vault","description":"Protects against destructive Azure Key Vault operations on secrets, keys, and certificates including delete and purge.","commands":["az"],"subcommands":["keyvault"]},{"id":"secrets.lastpass","name":"LastPass CLI","description":"Protects against destructive LastPass CLI operations like removing, editing, or moving items.","commands":["lpass"],"subcommands":["edit","mv","rm"]},{"id":"secrets.infisical","name":"Infisical CLI","description":"Protects against destructive Infisical CLI operations like deleting or overwriting secrets.","commands":["infisical"],"subcommands":["secrets"]},{"id":"secrets.pass","name":"Unix Pass","description":"Protects against destructive operations in the standard Unix password manager (pass).","commands":["pass"],"subcommands":["edit","generate","insert","mv","rm"]},{"id":"secrets.gopass","name":"Gopass","description":"Protects against destructive gopass operations like removing, moving, editing, or unmounting stores.","commands":["gopass"],"subcommands":["delete","edit","generate","insert","mounts","move","mv","rm"]},{"id":"secrets.conjur","name":"CyberArk Conjur","description":"Protects against destructive Conjur CLI operations like setting variables, loading policies, and rotating API keys.","commands":["conjur"],"subcommands":["host","policy","user","variable"]}]},{"category":"storage","packs":[{"id":"storage.s3","name":"AWS S3","description":"Protects against destructive S3 operations like bucket removal, recursive deletes, and sync --delete.","commands":["aws"],"subcommands":["delete-bucket","delete-object","delete-objects","rb","rm","s3","s3api","sync"]},{"id":"storage.gcs","name":"Google Cloud Storage","description":"Protects against destructive GCS operations like bucket removal, object deletion, and recursive deletes.","commands":["gcloud","gsutil"],"subcommands":["buckets","delete","objects","rm","storage"]},{"id":"storage.minio","name":"MinIO","description":"Protects against destructive MinIO Client (mc) operations like bucket removal, object deletion, and admin operations.","commands":["mc"],"subcommands":["bucket","policy","user"]},{"id":"storage.azure_blob","name":"Azure Blob Storage","description":"Protects against destructive Azure Blob Storage operations like container deletion, blob deletion, and azcopy remove.","commands":["az"],"subcommands":["account","blob","container","delete","delete-batch","storage"]}]},{"category":"strict_git","packs":[{"id":"strict_git","name":"Strict Git","description":"Stricter git protections: blocks all force pushes, rebases, and history rewriting operations","commands":["git"],"subcommands":["cherry-pick","commit","filter-branch","filter-repo","gc","push","rebase","reflog","submodule","worktree"]}]},{"category":"system","packs":[{"id":"system.disk","name":"Disk Operations","description":"Protects against destructive disk operations like dd to devices, mkfs, partition table modifications, RAID management, btrfs/LVM/device-mapper operations, and network block devices","commands":["btrfs","dd","dmsetup","fdisk","losetup","lvconvert","lvreduce","lvremove","lvresize","mdadm","mkfs","mkfs.btrfs","mkfs.ext2","mkfs.ext3","mkfs.ext4","mkfs.fat","mkfs.ntfs","mkfs.vfat","mkfs.xfs","mount","nbd-client","parted","pvmove","pvremove","umount","vgreduce","vgremove","wipefs"],"subcommands":["add","balance","check","clear","create","delete","device","filesystem","load","remove","remove_all","rescue","start","subvolume","wipe_table"]},{"id":"system.permissions","name":"Permissions","description":"Protects against dangerous permission changes like chmod 777, recursive chmod/chown on system directories","commands":["chmod","chown","setfacl"],"subcommands":[]},{"id":"system.services","name":"Services","description":"Protects against dangerous service operations like stopping critical services and modifying init configuration","commands":["init","reboot","service","shutdown","systemctl"],"subcommands":["disable","halt","hibernate","isolate","mask","poweroff","reboot","stop","suspend"]},{"id":"system.macos","name":"macOS System","description":"Protects against destructive macOS system operations like tmutil delete and diskutil eraseDisk","commands":["diskutil","tmutil"],"subcommands":["delete","eraseDisk","eraseVolume"]}]},{"category":"windows","packs":[{"id":"windows.filesystem","name":"Windows Filesystem","description":"Protects against destructive Windows file deletion commands (del, rmdir, rd, Remove-Item)","commands":["del","rd","remove-item","rmdir"],"subcommands":[]},{"id":"windows.services","name":"Windows Services","description":"Protects against dangerous Windows service operations (sc, net stop, Stop-Service, taskkill)","commands":["remove-service","sc","stop-service","taskkill"],"subcommands":["config","delete","stop"]},{"id":"windows.permissions","name":"Windows Permissions","description":"Protects against dangerous Windows ACL and permission changes (icacls, takeown, attrib, Set-ExecutionPolicy)","commands":["attrib","icacls","set-executionpolicy","takeown"],"subcommands":[]},{"id":"windows.disk","name":"Windows Disk Operations","description":"Protects against destructive Windows disk operations (diskpart, format, Clear-Disk, Initialize-Disk)","commands":["clear-disk","diskpart","format","initialize-disk","remove-partition"],"subcommands":[]},{"id":"windows.registry","name":"Windows Registry","description":"Protects against destructive Windows registry operations (reg delete, reg import)","commands":["reg"],"subcommands":["delete","import"]},{"id":"windows.firewall","name":"Windows Firewall","description":"Protects against disabling or resetting the Windows Firewall (netsh, Set-NetFirewallProfile)","commands":["disable-netadapter","netsh","set-netfirewallprofile"],"subcommands":["advfirewall","reset","set"]}]}];
+
+    const state = {
+      category: "all",
+      query: ""
+    };
+
+    const catalogEl = document.getElementById("catalog");
+    const categoriesEl = document.getElementById("categories");
+    const resultsEl = document.getElementById("results");
+    const searchEl = document.getElementById("search");
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function titleCase(value) {
+      return value.replaceAll("_", " ");
+    }
+
+    function totalPackCount() {
+      return PACK_GROUPS.reduce((sum, group) => sum + group.packs.length, 0);
+    }
+
+    function buildCategoryChips() {
+      const allChip = {
+        key: "all",
+        label: `All Categories (${PACK_GROUPS.length})`
+      };
+
+      const chips = [
+        allChip,
+        ...PACK_GROUPS.map((group) => ({
+          key: group.category,
+          label: `${titleCase(group.category)} (${group.packs.length})`
+        }))
+      ];
+
+      categoriesEl.innerHTML = chips.map((chip) => `
+        <button
+          class="category-chip ${state.category === chip.key ? "active" : ""}"
+          data-category="${escapeHtml(chip.key)}"
+          type="button"
+        >${escapeHtml(chip.label)}</button>
+      `).join("");
+
+      categoriesEl.querySelectorAll("[data-category]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.category = button.getAttribute("data-category");
+          buildCategoryChips();
+          renderCatalog();
+        });
+      });
+    }
+
+    function matchesQuery(pack, category, query) {
+      if (!query) {
+        return true;
+      }
+
+      const haystack = [
+        category,
+        pack.id,
+        pack.name,
+        pack.description,
+        ...pack.commands,
+        ...pack.subcommands
+      ].join(" ").toLowerCase();
+
+      return haystack.includes(query);
+    }
+
+    function renderChips(items, className) {
+      if (!items.length) {
+        return `<span class="chip ${className}">None</span>`;
+      }
+
+      return items.map((item) => `<span class="chip ${className}">${escapeHtml(item)}</span>`).join("");
+    }
+
+    function renderCatalog() {
+      const query = state.query.trim().toLowerCase();
+      const visibleGroups = PACK_GROUPS
+        .filter((group) => state.category === "all" || group.category === state.category)
+        .map((group) => ({
+          ...group,
+          packs: group.packs.filter((pack) => matchesQuery(pack, group.category, query))
+        }))
+        .filter((group) => group.packs.length > 0);
+
+      const visiblePackCount = visibleGroups.reduce((sum, group) => sum + group.packs.length, 0);
+      const visibleCategoryCount = visibleGroups.length;
+
+      resultsEl.textContent = `${visiblePackCount} pack${visiblePackCount === 1 ? "" : "s"} across ${visibleCategoryCount} categor${visibleCategoryCount === 1 ? "y" : "ies"} shown`;
+
+      if (visiblePackCount === 0) {
+        catalogEl.innerHTML = `
+          <div class="empty-state">
+            No built-in packs matched the current filter.
+          </div>
+        `;
+        return;
+      }
+
+      catalogEl.innerHTML = visibleGroups.map((group) => `
+        <section class="category-section" id="category-${escapeHtml(group.category)}">
+          <div class="category-head">
+            <h3>${escapeHtml(titleCase(group.category))}</h3>
+            <span>${group.packs.length} pack${group.packs.length === 1 ? "" : "s"}</span>
+          </div>
+          <div class="pack-grid">
+            ${group.packs.map((pack) => `
+              <article class="pack-card">
+                <div class="pack-top">
+                  <span class="pack-id">${escapeHtml(pack.id)}</span>
+                  <h4>${escapeHtml(pack.name)}</h4>
+                </div>
+                <p>${escapeHtml(pack.description)}</p>
+                <div class="field">
+                  <strong>Commands</strong>
+                  <div class="chips">${renderChips(pack.commands, "")}</div>
+                </div>
+                <div class="field">
+                  <strong>Subcommands</strong>
+                  <div class="chips">${renderChips(pack.subcommands, "sub")}</div>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      `).join("");
+    }
+
+    searchEl.addEventListener("input", (event) => {
+      state.query = event.target.value;
+      renderCatalog();
+    });
+
+    document.querySelector(".hero-meta").children[0].querySelector("span").innerHTML = `<code>packs/json/*.json</code>`;
+    document.querySelector(".hero-meta").children[1].querySelector("span").textContent = `${PACK_GROUPS.length} categories`;
+    document.querySelector(".hero-meta").children[2].querySelector("span").textContent = `${totalPackCount()} built-in packs`;
+
+    buildCategoryChips();
+    renderCatalog();
+  </script>
+</body>
+</html>

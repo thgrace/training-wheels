@@ -3,16 +3,14 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/exitcodes"
-	"github.com/thgrace/training-wheels/internal/logger"
 )
 
-var configFormat string
+var configJSON bool
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -21,28 +19,25 @@ var configCmd = &cobra.Command{
 }
 
 func init() {
-	configCmd.Flags().StringVar(&configFormat, "format", "pretty", "Output format: pretty or json")
+	bindJSONOutputFlags(configCmd.Flags(), &configJSON)
 }
 
 func runConfig(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("config error", "error", err)
-		os.Exit(exitcodes.ConfigError)
+		return exitErrorf(exitcodes.ConfigError, "config error: %w", err)
 	}
 
 	externalPaths, err := cfg.ExternalPackPaths()
 	if err != nil {
-		logger.Error("pack path resolution error", "error", err)
-		os.Exit(exitcodes.ConfigError)
+		return exitErrorf(exitcodes.ConfigError, "pack path resolution error: %w", err)
 	}
 
-	switch configFormat {
-	case "json":
+	switch {
+	case useJSONOutput(configJSON):
 		out, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
-			logger.Error("json marshal error", "error", err)
-			os.Exit(exitcodes.ConfigError)
+			return exitErrorf(exitcodes.ConfigError, "json marshal error: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), string(out))
 	default:

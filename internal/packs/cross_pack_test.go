@@ -6,9 +6,9 @@ import (
 	"github.com/thgrace/training-wheels/internal/packs"
 )
 
-// TestKubectl_DestructivePatterns verifies that known-destructive kubectl
+// TestKubectl_StructuralPatterns verifies that known-destructive kubectl
 // commands are blocked by the kubernetes.kubectl pack.
-func TestKubectl_DestructivePatterns(t *testing.T) {
+func TestKubectl_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 	p := reg.Get("kubernetes.kubectl")
 	if p == nil {
@@ -72,9 +72,9 @@ func TestKubectl_SafePatterns(t *testing.T) {
 	}
 }
 
-// TestHelm_DestructivePatterns verifies that helm uninstall and rollback are
+// TestHelm_StructuralPatterns verifies that helm uninstall and rollback are
 // blocked by the kubernetes.helm pack.
-func TestHelm_DestructivePatterns(t *testing.T) {
+func TestHelm_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 	p := reg.Get("kubernetes.helm")
 	if p == nil {
@@ -100,9 +100,9 @@ func TestHelm_DestructivePatterns(t *testing.T) {
 	}
 }
 
-// TestDocker_DestructivePatterns verifies that destructive docker commands are
+// TestDocker_StructuralPatterns verifies that destructive docker commands are
 // blocked by the containers.docker pack.
-func TestDocker_DestructivePatterns(t *testing.T) {
+func TestDocker_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 	p := reg.Get("containers.docker")
 	if p == nil {
@@ -162,9 +162,9 @@ func TestDocker_SafePatterns(t *testing.T) {
 	}
 }
 
-// TestDatabase_DestructivePatterns verifies that destructive database commands
+// TestDatabase_StructuralPatterns verifies that destructive database commands
 // are blocked across the postgresql, mysql, mongodb, and redis packs.
-func TestDatabase_DestructivePatterns(t *testing.T) {
+func TestDatabase_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 
 	tests := []struct {
@@ -223,9 +223,9 @@ func TestDatabase_SafePatterns(t *testing.T) {
 	}
 }
 
-// TestInfrastructure_DestructivePatterns verifies that destructive infrastructure
+// TestInfrastructure_StructuralPatterns verifies that destructive infrastructure
 // commands are blocked by the terraform, ansible, and pulumi packs.
-func TestInfrastructure_DestructivePatterns(t *testing.T) {
+func TestInfrastructure_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 
 	tests := []struct {
@@ -282,10 +282,10 @@ func TestInfrastructure_SafePatterns(t *testing.T) {
 	}
 }
 
-// TestSystemDisk_DestructivePatterns verifies that destructive disk operations
+// TestSystemDisk_StructuralPatterns verifies that destructive disk operations
 // are blocked by the system.disk pack.
 // disk_tests.rs.
-func TestSystemDisk_DestructivePatterns(t *testing.T) {
+func TestSystemDisk_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 	p := reg.Get("system.disk")
 	if p == nil {
@@ -362,10 +362,10 @@ func TestSystemDisk_SafePatterns(t *testing.T) {
 	}
 }
 
-// TestSystemPermissions_DestructivePatterns verifies that dangerous permission
+// TestSystemPermissions_StructuralPatterns verifies that dangerous permission
 // changes are blocked by the system.permissions pack.
 // permissions_tests.rs.
-func TestSystemPermissions_DestructivePatterns(t *testing.T) {
+func TestSystemPermissions_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 	p := reg.Get("system.permissions")
 	if p == nil {
@@ -422,9 +422,9 @@ func TestSystemPermissions_SafePatterns(t *testing.T) {
 	}
 }
 
-// TestSecrets_DestructivePatterns verifies that destructive secret management
+// TestSecrets_StructuralPatterns verifies that destructive secret management
 // commands are blocked by the secrets.* packs.
-func TestSecrets_DestructivePatterns(t *testing.T) {
+func TestSecrets_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 
 	tests := []struct {
@@ -591,9 +591,9 @@ func TestSecrets_SafePatterns(t *testing.T) {
 	}
 }
 
-// TestCloud_DestructivePatterns verifies that destructive cloud CLI commands are
+// TestCloud_StructuralPatterns verifies that destructive cloud CLI commands are
 // blocked by the cloud.aws and cloud.gcp packs.
-func TestCloud_DestructivePatterns(t *testing.T) {
+func TestCloud_StructuralPatterns(t *testing.T) {
 	reg := packs.DefaultRegistry()
 
 	tests := []struct {

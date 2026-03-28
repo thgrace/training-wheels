@@ -20,7 +20,7 @@
   "$defs": {
     "pack": {
       "type": "object",
-      "required": ["id", "name", "description", "keywords", "safe_patterns", "destructive_patterns"],
+      "required": ["id", "name", "description", "keywords"],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -36,21 +36,26 @@
           "type": "string",
           "description": "One-sentence summary of what the pack protects against."
         },
-        "keywords": {
-          "type": "array",
-          "description": "Trigger tokens for quick-reject matching.",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
-        },
-        "safe_patterns": {
-          "type": "array",
-          "description": "Allowlist regexes. A match bypasses all destructive checks for this pack.",
-          "items": { "$ref": "#/$defs/safe_pattern" }
+      "keywords": {
+        "type": "array",
+        "description": "Trigger tokens for quick-reject matching.",
+        "items": { "type": "string", "minLength": 1 },
+        "minItems": 1
+      },
+      "safe_patterns": {
+        "type": "array",
+        "description": "Allowlist regexes (v1). A match bypasses all destructive checks for this pack.",
+        "items": { "$ref": "#/$defs/safe_pattern" }
         },
         "destructive_patterns": {
           "type": "array",
-          "description": "Blocklist regexes. Evaluated in order; first match wins.",
+          "description": "Blocklist regexes (v1). Evaluated in order; first match wins.",
           "items": { "$ref": "#/$defs/destructive_pattern" }
+        },
+        "structural_patterns": {
+          "type": "array",
+          "description": "Structural when/unless patterns (v2). Replaces safe_patterns+destructive_patterns.",
+          "items": { "$ref": "#/$defs/structural_pattern" }
         }
       }
     },
@@ -79,6 +84,64 @@
         "suggestions": {
           "type": "array",
           "items": { "$ref": "#/$defs/suggestion" }
+        }
+      }
+    },
+    "structural_pattern": {
+      "type": "object",
+      "required": ["name", "when", "reason", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "when": { "$ref": "#/$defs/pattern_condition" },
+        "unless": { "$ref": "#/$defs/pattern_condition" },
+        "reason": { "type": "string", "minLength": 1 },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "action": {
+          "type": "string",
+          "enum": ["deny", "ask", "warn"]
+        },
+        "explanation": { "type": "string" },
+        "suggestions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/suggestion" }
+        }
+      }
+    },
+    "pattern_condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "subcommand": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "flag": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "all_flags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "arg_exact": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "arg_prefix": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "arg_contains": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     },

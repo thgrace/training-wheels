@@ -18,6 +18,7 @@ import (
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/exitcodes"
 	"github.com/thgrace/training-wheels/internal/logger"
+	"github.com/thgrace/training-wheels/internal/osutil"
 )
 
 // httpClient is used for all update HTTP requests to enforce timeouts.
@@ -25,7 +26,23 @@ var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-var updateCheckOnly bool
+var (
+	fetchLatestReleaseFn = fetchLatestRelease
+	downloadToTempFn     = downloadToTemp
+	verifyChecksumFn     = verifyChecksum
+	verifyCosignBundleFn = verifyCosignBundle
+	executablePathFn     = os.Executable
+	evalSymlinksFn       = filepath.EvalSymlinks
+	removeFileFn         = os.Remove
+	renameFileFn         = os.Rename
+	chmodFileFn          = os.Chmod
+	copyFileFn           = osutil.CopyFile
+)
+
+var (
+	updateCheckOnly bool
+	updateJSON      bool
+)
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
@@ -34,7 +51,19 @@ var updateCmd = &cobra.Command{
 }
 
 func init() {
+	bindJSONOutputFlags(updateCmd.Flags(), &updateJSON)
 	updateCmd.Flags().BoolVar(&updateCheckOnly, "check", false, "Only check for updates, don't download")
+}
+
+type updateJSONOutput struct {
+	CurrentVersion    string `json:"current_version"`
+	UpdateSource      string `json:"update_source"`
+	LatestVersion     string `json:"latest_version,omitempty"`
+	Status            string `json:"status"`
+	UpdateAvailable   bool   `json:"update_available"`
+	AssetName         string `json:"asset_name,omitempty"`
+	ChecksumVerified  bool   `json:"checksum_verified,omitempty"`
+	SignatureVerified bool   `json:"signature_verified,omitempty"`
 }
 
 // Version is set via ldflags at build time: -ldflags "-X ...cli.Version=v1.0.0"
@@ -68,28 +97,49 @@ type githubAsset struct {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
+	jsonOutput := useJSONOutput(updateJSON)
 	updateURL := resolveUpdateURL()
+	out := updateJSONOutput{
+		CurrentVersion: Version,
+		UpdateSource:   updateURL,
+		Status:         "checking",
+	}
 
-	fmt.Printf("Current version: %s\n", Version)
-	fmt.Printf("Update source:   %s\n", updateURL)
+	if !jsonOutput {
+		fmt.Fprintf(cmd.OutOrStdout(), "Current version: %s\n", Version)
+		fmt.Fprintf(cmd.OutOrStdout(), "Update source:   %s\n", updateURL)
+	}
 
 	// Fetch latest release info.
-	release, err := fetchLatestRelease(updateURL)
+	release, err := fetchLatestReleaseFn(updateURL)
 	if err != nil {
 		logger.Error("failed to check for updates", "error", err)
-		os.Exit(exitcodes.IOError)
+		return silentExit(exitcodes.IOError)
 	}
 
 	latest := release.TagName
-	fmt.Printf("Latest version:  %s\n", latest)
+	out.LatestVersion = latest
+
+	if !jsonOutput {
+		fmt.Fprintf(cmd.OutOrStdout(), "Latest version:  %s\n", latest)
+	}
 
 	if Version == latest {
-		fmt.Println("Already up to date.")
+		out.Status = "up_to_date"
+		if jsonOutput {
+			return writeJSONOutput(cmd.OutOrStdout(), out)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Already up to date.")
 		return nil
 	}
 
+	out.UpdateAvailable = true
 	if updateCheckOnly {
-		fmt.Println("Update available. Run 'tw update' to install.")
+		out.Status = "update_available"
+		if jsonOutput {
+			return writeJSONOutput(cmd.OutOrStdout(), out)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Update available. Run 'tw update' to install.")
 		return nil
 	}
 
@@ -97,12 +147,16 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	assetName := expectedAssetName()
 	var downloadURL string
 	var checksumURL string
+	var bundleURL string
 	for _, a := range release.Assets {
 		if a.Name == assetName {
 			downloadURL = a.BrowserDownloadURL
 		}
 		if a.Name == assetName+".sha256" || a.Name == "checksums.txt" {
 			checksumURL = a.BrowserDownloadURL
+		}
+		if a.Name == assetName+".bundle" {
+			bundleURL = a.BrowserDownloadURL
 		}
 	}
 
@@ -111,67 +165,99 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			"os", runtime.GOOS,
 			"arch", runtime.GOARCH,
 			"expected", assetName)
-		os.Exit(exitcodes.IOError)
+		return silentExit(exitcodes.IOError)
 	}
 
-	fmt.Printf("Downloading %s...\n", assetName)
+	out.AssetName = assetName
+	if !jsonOutput {
+		fmt.Fprintf(cmd.OutOrStdout(), "Downloading %s...\n", assetName)
+	}
 
 	// Download to temp file.
-	tmpFile, err := downloadToTemp(downloadURL)
+	tmpFile, err := downloadToTempFn(downloadURL)
 	if err != nil {
 		logger.Error("download failed", "error", err)
-		os.Exit(exitcodes.IOError)
+		return silentExit(exitcodes.IOError)
 	}
-	defer os.Remove(tmpFile)
+	defer removeFileFn(tmpFile)
 
 	// Verify checksum if available.
 	if checksumURL != "" {
-		if err := verifyChecksum(tmpFile, checksumURL, assetName); err != nil {
+		if err := verifyChecksumFn(tmpFile, checksumURL, assetName); err != nil {
 			logger.Error("checksum verification failed", "error", err)
-			os.Exit(exitcodes.IOError)
+			return silentExit(exitcodes.IOError)
 		}
-		fmt.Println("Checksum verified.")
+		out.ChecksumVerified = true
+		if !jsonOutput {
+			fmt.Fprintln(cmd.OutOrStdout(), "Checksum verified.")
+		}
+	}
+
+	// Verify Cosign signature if bundle is available.
+	if bundleURL != "" {
+		bundleTmp, dlErr := downloadToTempFn(bundleURL)
+		if dlErr != nil {
+			logger.Error("failed to download signature bundle", "error", dlErr)
+			return silentExit(exitcodes.IOError)
+		}
+		defer removeFileFn(bundleTmp)
+
+		if verifyErr := verifyCosignBundleFn(tmpFile, bundleTmp); verifyErr != nil {
+			logger.Error("signature verification failed", "error", verifyErr)
+			return silentExit(exitcodes.IOError)
+		}
+		out.SignatureVerified = true
+		if !jsonOutput {
+			fmt.Fprintln(cmd.OutOrStdout(), "Signature verified.")
+		}
+	} else if !jsonOutput {
+		fmt.Fprintln(cmd.OutOrStdout(), "Warning: no signature bundle found; skipping signature verification.")
 	}
 
 	// Find current binary path.
-	currentBinary, err := os.Executable()
+	currentBinary, err := executablePathFn()
 	if err != nil {
 		logger.Error("cannot determine current binary path", "error", err)
-		os.Exit(exitcodes.IOError)
+		return silentExit(exitcodes.IOError)
 	}
-	currentBinary, _ = filepath.EvalSymlinks(currentBinary)
+	currentBinary, _ = evalSymlinksFn(currentBinary)
 
 	// Replace current binary with downloaded version.
 	if runtime.GOOS == "windows" {
 		// Windows locks running executables. Rename the running binary
 		// out of the way first, then move the new one into place.
 		oldBinary := currentBinary + ".old"
-		os.Remove(oldBinary) // clean up from previous update
-		if err := os.Rename(currentBinary, oldBinary); err != nil {
+		removeFileFn(oldBinary) // clean up from previous update
+		if err := renameFileFn(currentBinary, oldBinary); err != nil {
 			logger.Error("failed to move current binary", "error", err)
-			os.Exit(exitcodes.IOError)
+			return silentExit(exitcodes.IOError)
 		}
-		if err := os.Rename(tmpFile, currentBinary); err != nil {
-			if err := copyFile(tmpFile, currentBinary); err != nil {
+		if err := renameFileFn(tmpFile, currentBinary); err != nil {
+			if err := copyFileFn(tmpFile, currentBinary); err != nil {
 				logger.Error("failed to install new binary", "error", err)
-				os.Exit(exitcodes.IOError)
+				return silentExit(exitcodes.IOError)
 			}
 		}
 	} else {
-		if err := os.Chmod(tmpFile, 0o755); err != nil {
+		if err := chmodFileFn(tmpFile, 0o755); err != nil {
 			logger.Error("chmod failed", "error", err)
-			os.Exit(exitcodes.IOError)
+			return silentExit(exitcodes.IOError)
 		}
-		if err := os.Rename(tmpFile, currentBinary); err != nil {
+		if err := renameFileFn(tmpFile, currentBinary); err != nil {
 			// Cross-device rename — fall back to copy.
-			if err := copyFile(tmpFile, currentBinary); err != nil {
+			if err := copyFileFn(tmpFile, currentBinary); err != nil {
 				logger.Error("failed to replace binary", "error", err)
-				os.Exit(exitcodes.IOError)
+				return silentExit(exitcodes.IOError)
 			}
 		}
 	}
 
-	fmt.Printf("Updated to %s\n", latest)
+	out.Status = "updated"
+	if jsonOutput {
+		return writeJSONOutput(cmd.OutOrStdout(), out)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Updated to %s\n", latest)
 	return nil
 }
 
@@ -298,21 +384,4 @@ func verifyChecksum(filePath, checksumURL, assetName string) error {
 		return fmt.Errorf("SHA-256 mismatch: expected %s, got %s", expectedHash, actualHash)
 	}
 	return nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
 }

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/thgrace/training-wheels/internal/app"
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/logger"
 	"github.com/thgrace/training-wheels/internal/packs"
@@ -30,7 +31,7 @@ func BenchmarkCLIStartup_Default(b *testing.B) {
 			b.Fatal(err)
 		}
 		reg := packs.NewEmptyRegistry()
-		initializeRegistry(reg, cfg)
+		app.InitializeRegistry(reg, cfg)
 		if reg.Count() == 0 {
 			b.Fatal("expected built-in packs to load")
 		}
@@ -121,7 +122,7 @@ func BenchmarkCLIStartup_WithExternalPacks(b *testing.B) {
 			b.Fatal(err)
 		}
 		reg := packs.NewEmptyRegistry()
-		initializeRegistry(reg, cfg)
+		app.InitializeRegistry(reg, cfg)
 		if reg.Get("userextra.one") == nil || reg.Get("projectextra.one") == nil || reg.Get("customextra.one") == nil {
 			b.Fatal("expected external packs to load")
 		}
@@ -157,7 +158,7 @@ func BenchmarkCLIStartup_ExternalDirectoryScanOnly(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		reg := packs.NewEmptyRegistry()
-		loadPackSourcesFromConfig(reg, cfg)
+		app.LoadPackSourcesFromConfig(reg, cfg)
 	}
 }
 

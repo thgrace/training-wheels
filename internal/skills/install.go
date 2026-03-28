@@ -16,6 +16,12 @@ const (
 	// ClaudeSkillRelDir is the Claude-specific skill directory relative to home.
 	ClaudeSkillRelDir = ".claude/skills/training-wheels"
 
+	// ComposeRuleSkillRelDir is the cross-client skill directory for compose-rule.
+	ComposeRuleSkillRelDir = ".agents/skills/compose-rule"
+
+	// ClaudeComposeRuleSkillRelDir is the Claude-specific skill directory for compose-rule.
+	ClaudeComposeRuleSkillRelDir = ".claude/skills/compose-rule"
+
 	// SkillFileName is the skill file name per agentskills.io spec.
 	SkillFileName = "SKILL.md"
 )
@@ -50,6 +56,25 @@ func UninstallFrom(baseDir string) error {
 	// Remove the training-wheels directory if now empty.
 	_ = os.Remove(baseDir)
 	return nil
+}
+
+// InstallComposeRuleTo writes the compose-rule SKILL.md to baseDir/SKILL.md.
+func InstallComposeRuleTo(baseDir string) error {
+	content, err := skillassets.ComposeRuleSkillContent()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return err
+	}
+
+	dst := filepath.Join(baseDir, SkillFileName)
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, content, 0o644); err != nil {
+		return err
+	}
+	return osutil.AtomicRename(tmp, dst)
 }
 
 // ExistsAt returns true if the skill file exists at baseDir and its content

@@ -14,75 +14,93 @@
         "delete-objects",
         "--delete"
       ],
-      "safe_patterns": [
-        {
-          "name": "s3-list",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3\\s+ls\\b"
-        },
-        {
-          "name": "s3-copy",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3\\s+cp\\b"
-        },
-        {
-          "name": "s3-presign",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3\\s+presign\\b"
-        },
-        {
-          "name": "s3-mb",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3\\s+mb\\b"
-        },
-        {
-          "name": "s3api-list-objects",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3api\\s+list-objects(?:-v2)?\\b"
-        },
-        {
-          "name": "s3api-get-object",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3api\\s+get-object\\b"
-        },
-        {
-          "name": "s3api-head-object",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3api\\s+head-object\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "s3-rb",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3\\s+rb\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "s3",
+              "rb"
+            ]
+          },
           "reason": "aws s3 rb removes an S3 bucket and is destructive.",
           "severity": "critical",
           "explanation": "Removing an S3 bucket deletes the bucket and optionally all objects within it (with --force). Bucket names are globally unique and may be claimed by others after deletion. Versioned objects require additional cleanup.\n\nSafer alternatives:\n- aws s3 ls: Review bucket contents first\n- Empty the bucket before removal\n- Enable bucket versioning for recovery options"
         },
         {
           "name": "s3-rm",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3\\s+rm\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "s3",
+              "rm"
+            ]
+          },
           "reason": "aws s3 rm deletes S3 objects and is destructive.",
           "severity": "high",
           "explanation": "The rm command deletes objects from S3. With --recursive, it deletes all objects under a prefix. For versioned buckets, this creates delete markers; for unversioned buckets, data is permanently lost.\n\nSafer alternatives:\n- aws s3 ls: Review objects before deletion\n- Use --dryrun to preview what will be deleted\n- Enable versioning for recovery options"
         },
         {
           "name": "s3-sync-delete",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3\\s+sync\\b(?:\\s+[^\\n]*)?\\s+--delete\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "s3",
+              "sync"
+            ]
+          },
           "reason": "aws s3 sync --delete removes destination objects not in source.",
           "severity": "high",
           "explanation": "The --delete flag removes files from the destination that don't exist in the source. This can accidentally delete important data if source and destination are swapped or if source is empty.\n\nSafer alternatives:\n- aws s3 sync --dryrun: Preview changes first\n- Omit --delete for additive-only sync\n- Back up destination before syncing"
         },
         {
           "name": "s3api-delete-bucket",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3api\\s+delete-bucket\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "s3api",
+              "delete-bucket"
+            ]
+          },
           "reason": "aws s3api delete-bucket permanently deletes a bucket.",
           "severity": "critical",
           "explanation": "The delete-bucket API removes an S3 bucket. The bucket must be empty (including all versions and delete markers). Once deleted, the bucket name becomes available globally and may be claimed by others.\n\nSafer alternatives:\n- aws s3api list-objects-v2: Verify bucket is empty\n- aws s3api list-object-versions: Check for versions\n- Use lifecycle policies for managed cleanup"
         },
         {
           "name": "s3api-delete-object",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3api\\s+delete-object\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "s3api",
+              "delete-object"
+            ]
+          },
           "reason": "aws s3api delete-object permanently deletes an object.",
           "severity": "medium",
           "explanation": "Deleting an object removes it from S3. For versioned buckets, this creates a delete marker. Specifying a version-id permanently deletes that specific version. Unversioned objects are immediately and permanently deleted.\n\nSafer alternatives:\n- aws s3api head-object: Verify object exists\n- Use bucket versioning for recovery\n- Copy to backup location before deletion"
         },
         {
           "name": "s3api-delete-objects",
-          "regex": "aws(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+s3api\\s+delete-objects\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "s3api",
+              "delete-objects"
+            ]
+          },
           "reason": "aws s3api delete-objects permanently deletes multiple objects.",
           "severity": "high",
           "explanation": "Batch deletion removes up to 1,000 objects per request. A malformed delete JSON file can remove unintended objects. Deletions are processed in parallel and cannot be easily stopped once started.\n\nSafer alternatives:\n- Review the delete JSON file carefully\n- Test with a single object first\n- Enable versioning before bulk deletions"
@@ -97,107 +115,83 @@
         "gsutil",
         "gcloud storage"
       ],
-      "safe_patterns": [
-        {
-          "name": "gsutil-ls",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*ls\\b"
-        },
-        {
-          "name": "gsutil-cat",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*cat\\b"
-        },
-        {
-          "name": "gsutil-stat",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*stat\\b"
-        },
-        {
-          "name": "gsutil-du",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*du\\b"
-        },
-        {
-          "name": "gsutil-hash",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*hash\\b"
-        },
-        {
-          "name": "gsutil-version",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*version\\b"
-        },
-        {
-          "name": "gsutil-help",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*help\\b"
-        },
-        {
-          "name": "gsutil-cp",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*cp\\b"
-        },
-        {
-          "name": "gcloud-storage-buckets-list",
-          "regex": "gcloud\\s+storage\\s+buckets\\s+list\\b"
-        },
-        {
-          "name": "gcloud-storage-buckets-describe",
-          "regex": "gcloud\\s+storage\\s+buckets\\s+describe\\b"
-        },
-        {
-          "name": "gcloud-storage-objects-list",
-          "regex": "gcloud\\s+storage\\s+objects\\s+list\\b"
-        },
-        {
-          "name": "gcloud-storage-objects-describe",
-          "regex": "gcloud\\s+storage\\s+objects\\s+describe\\b"
-        },
-        {
-          "name": "gcloud-storage-ls",
-          "regex": "gcloud\\s+storage\\s+ls\\b"
-        },
-        {
-          "name": "gcloud-storage-cat",
-          "regex": "gcloud\\s+storage\\s+cat\\b"
-        },
-        {
-          "name": "gcloud-storage-cp",
-          "regex": "gcloud\\s+storage\\s+cp\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "gsutil-rb",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*rb\\b",
+          "when": {
+            "command": [
+              "gsutil"
+            ]
+          },
           "reason": "gsutil rb removes a GCS bucket.",
           "severity": "critical",
           "explanation": "Removing a GCS bucket deletes the bucket and potentially all objects within it. Bucket names are globally unique and may not be immediately available for reuse. Applications and services referencing this bucket will fail.\n\nSafer alternatives:\n- gsutil ls gs://bucket: List bucket contents first\n- gsutil -m cp -r gs://bucket ./backup: Backup contents locally\n- Enable object versioning before testing deletions"
         },
         {
           "name": "gsutil-rm",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*rm\\b",
+          "when": {
+            "command": [
+              "gsutil"
+            ]
+          },
           "reason": "gsutil rm deletes objects from GCS.",
           "severity": "high",
           "explanation": "Deleting GCS objects permanently removes data unless versioning is enabled. With -r flag, entire directory trees are deleted recursively. Without versioning, deleted objects cannot be recovered.\n\nSafer alternatives:\n- gsutil ls: Preview what will be deleted\n- Enable bucket versioning for recovery options\n- gsutil mv: Move to archive bucket instead of deleting"
         },
         {
           "name": "gsutil-rsync-delete",
-          "regex": "gsutil\\s+(?:-[a-zA-Z]+\\s+)*rsync\\b.*\\s+-d\\b",
+          "when": {
+            "command": [
+              "gsutil"
+            ]
+          },
           "reason": "gsutil rsync -d deletes destination objects not in source.",
           "severity": "high",
           "explanation": "The -d flag with gsutil rsync deletes destination objects that don't exist in the source. If source and destination are swapped, or source is empty, this can result in total data loss at the destination.\n\nSafer alternatives:\n- gsutil rsync -n -d: Dry run to preview deletions\n- gsutil rsync without -d: Only adds/updates, never deletes\n- Backup destination before syncing"
         },
         {
           "name": "gcloud-storage-buckets-delete",
-          "regex": "gcloud\\s+storage\\s+buckets\\s+delete\\b",
+          "when": {
+            "command": [
+              "gcloud"
+            ],
+            "subcommand": [
+              "storage",
+              "buckets",
+              "delete"
+            ]
+          },
           "reason": "gcloud storage buckets delete removes a GCS bucket.",
           "severity": "critical",
           "explanation": "Deleting a GCS bucket removes the bucket configuration and all objects within it (if --recursive is used). The globally unique bucket name may not be immediately reclaimable. All dependent applications will fail.\n\nSafer alternatives:\n- gcloud storage buckets describe: Review bucket configuration\n- gcloud storage cp -r: Backup contents before deletion\n- Remove objects first to understand data being deleted"
         },
         {
           "name": "gcloud-storage-objects-delete",
-          "regex": "gcloud\\s+storage\\s+objects\\s+delete\\b",
+          "when": {
+            "command": [
+              "gcloud"
+            ],
+            "subcommand": [
+              "storage",
+              "objects",
+              "delete"
+            ]
+          },
           "reason": "gcloud storage objects delete removes objects from GCS.",
           "severity": "high",
           "explanation": "Deleting GCS objects permanently removes data. Without object versioning, deleted files cannot be recovered. Production data should be backed up before deletion.\n\nSafer alternatives:\n- gcloud storage objects describe: Verify object before deletion\n- Enable bucket versioning for soft deletes\n- Move to archive storage class instead of deleting"
         },
         {
           "name": "gcloud-storage-rm",
-          "regex": "gcloud\\s+storage\\s+rm\\b",
+          "when": {
+            "command": [
+              "gcloud"
+            ],
+            "subcommand": [
+              "storage",
+              "rm"
+            ]
+          },
           "reason": "gcloud storage rm removes objects from GCS.",
           "severity": "high",
           "explanation": "The rm command deletes objects and can recursively remove entire bucket contents. Deleted objects are permanently lost unless versioning is enabled. Wildcards can unexpectedly match more files than intended.\n\nSafer alternatives:\n- gcloud storage ls: Preview files matching pattern\n- Enable bucket versioning before testing\n- gcloud storage mv: Move to archive bucket instead"
@@ -211,103 +205,78 @@
       "keywords": [
         "mc"
       ],
-      "safe_patterns": [
-        {
-          "name": "mc-ls",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*ls\\b"
-        },
-        {
-          "name": "mc-cat",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*cat\\b"
-        },
-        {
-          "name": "mc-head",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*head\\b"
-        },
-        {
-          "name": "mc-stat",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*stat\\b"
-        },
-        {
-          "name": "mc-cp",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*cp\\b"
-        },
-        {
-          "name": "mc-diff",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*diff\\b"
-        },
-        {
-          "name": "mc-find",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*find\\b"
-        },
-        {
-          "name": "mc-du",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*du\\b"
-        },
-        {
-          "name": "mc-version",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*version\\b"
-        },
-        {
-          "name": "mc-help",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*(?:--help|-h)\\b"
-        },
-        {
-          "name": "mc-admin-info",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*admin\\s+info\\b"
-        },
-        {
-          "name": "mc-admin-user-list",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*admin\\s+user\\s+list\\b"
-        },
-        {
-          "name": "mc-admin-policy-list",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*admin\\s+policy\\s+list\\b"
-        },
-        {
-          "name": "mc-alias-list",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*alias\\s+list\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "mc-rb",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*rb\\b",
+          "when": {
+            "command": [
+              "mc"
+            ]
+          },
           "reason": "mc rb removes a MinIO bucket.",
           "severity": "critical",
           "explanation": "Removing a MinIO bucket deletes the bucket and all objects within it. With --force, objects are deleted without confirmation. Applications referencing this bucket will fail immediately.\n\nSafer alternatives:\n- mc ls: List bucket contents first\n- mc cp --recursive: Backup to another location\n- Enable versioning or object locking before testing"
         },
         {
           "name": "mc-rm",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*rm\\b",
+          "when": {
+            "command": [
+              "mc"
+            ]
+          },
           "reason": "mc rm deletes objects from MinIO.",
           "severity": "high",
           "explanation": "Deleting MinIO objects permanently removes data unless versioning is enabled. With --recursive, entire directory trees are deleted. With --force, no confirmation is requested.\n\nSafer alternatives:\n- mc ls: Preview files to be deleted\n- mc cp: Backup objects before deletion\n- Enable bucket versioning for recovery"
         },
         {
           "name": "mc-admin-bucket-delete",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*admin\\s+bucket\\s+(?:delete|remove)\\b",
+          "when": {
+            "command": [
+              "mc"
+            ],
+            "subcommand": [
+              "bucket"
+            ]
+          },
           "reason": "mc admin bucket delete removes a bucket via admin API.",
           "severity": "critical",
           "explanation": "The admin bucket delete command bypasses normal bucket deletion restrictions. This can remove buckets that are protected or non-empty. The operation is immediate and cannot be undone.\n\nSafer alternatives:\n- mc admin info: Review cluster configuration\n- mc ls: Verify bucket contents first\n- Use standard mc rb for safer deletion"
         },
         {
           "name": "mc-mirror-remove",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*mirror\\b.*--remove\\b",
+          "when": {
+            "command": [
+              "mc"
+            ]
+          },
           "reason": "mc mirror --remove deletes destination objects not in source.",
           "severity": "high",
           "explanation": "The --remove flag deletes objects from the destination that don't exist in the source. If source and destination are swapped, or source is empty, this can result in complete data loss at the destination.\n\nSafer alternatives:\n- mc diff: Preview differences before mirroring\n- mc mirror without --remove: Only adds/updates\n- Backup destination before mirroring"
         },
         {
           "name": "mc-admin-user-remove",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*admin\\s+user\\s+(?:remove|disable)\\b",
+          "when": {
+            "command": [
+              "mc"
+            ],
+            "subcommand": [
+              "user"
+            ]
+          },
           "reason": "mc admin user remove/disable affects user access.",
           "severity": "high",
           "explanation": "Removing or disabling a MinIO user revokes their access to all buckets and policies. Applications using this user's credentials will fail to authenticate. Service accounts created by this user may also be affected.\n\nSafer alternatives:\n- mc admin user info: Review user permissions first\n- mc admin user disable: Disable instead of remove\n- Rotate credentials before removing user"
         },
         {
           "name": "mc-admin-policy-remove",
-          "regex": "\\bmc\\s+(?:--\\S+\\s+)*admin\\s+policy\\s+(?:remove|unset)\\b",
+          "when": {
+            "command": [
+              "mc"
+            ],
+            "subcommand": [
+              "policy"
+            ]
+          },
           "reason": "mc admin policy remove/unset modifies access policies.",
           "severity": "medium",
           "explanation": "Removing or unsetting a policy affects all users and groups assigned to it. Users may unexpectedly lose access to buckets they need. Policy changes take effect immediately.\n\nSafer alternatives:\n- mc admin policy info: Review policy details\n- mc admin user list: Check who uses this policy\n- Create replacement policy before removing old one"
@@ -322,123 +291,89 @@
         "az storage",
         "azcopy"
       ],
-      "safe_patterns": [
-        {
-          "name": "az-storage-container-list",
-          "regex": "\\baz\\s+storage\\s+container\\s+list\\b"
-        },
-        {
-          "name": "az-storage-container-show",
-          "regex": "\\baz\\s+storage\\s+container\\s+show\\b"
-        },
-        {
-          "name": "az-storage-container-exists",
-          "regex": "\\baz\\s+storage\\s+container\\s+exists\\b"
-        },
-        {
-          "name": "az-storage-blob-list",
-          "regex": "\\baz\\s+storage\\s+blob\\s+list\\b"
-        },
-        {
-          "name": "az-storage-blob-show",
-          "regex": "\\baz\\s+storage\\s+blob\\s+show\\b"
-        },
-        {
-          "name": "az-storage-blob-exists",
-          "regex": "\\baz\\s+storage\\s+blob\\s+exists\\b"
-        },
-        {
-          "name": "az-storage-blob-download",
-          "regex": "\\baz\\s+storage\\s+blob\\s+download\\b"
-        },
-        {
-          "name": "az-storage-blob-download-batch",
-          "regex": "\\baz\\s+storage\\s+blob\\s+download-batch\\b"
-        },
-        {
-          "name": "az-storage-blob-url",
-          "regex": "\\baz\\s+storage\\s+blob\\s+url\\b"
-        },
-        {
-          "name": "az-storage-blob-metadata-show",
-          "regex": "\\baz\\s+storage\\s+blob\\s+metadata\\s+show\\b"
-        },
-        {
-          "name": "az-storage-account-list",
-          "regex": "\\baz\\s+storage\\s+account\\s+list\\b"
-        },
-        {
-          "name": "az-storage-account-show",
-          "regex": "\\baz\\s+storage\\s+account\\s+show\\b"
-        },
-        {
-          "name": "az-storage-account-keys-list",
-          "regex": "\\baz\\s+storage\\s+account\\s+keys\\s+list\\b"
-        },
-        {
-          "name": "azcopy-list",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*list\\b"
-        },
-        {
-          "name": "azcopy-copy",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*copy\\b"
-        },
-        {
-          "name": "azcopy-jobs-list",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*jobs\\s+list\\b"
-        },
-        {
-          "name": "azcopy-jobs-show",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*jobs\\s+show\\b"
-        },
-        {
-          "name": "azcopy-login",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*login\\b"
-        },
-        {
-          "name": "azcopy-env",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*env\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "az-storage-container-delete",
-          "regex": "\\baz\\s+storage\\s+container\\s+delete\\b",
+          "when": {
+            "command": [
+              "az"
+            ],
+            "subcommand": [
+              "storage",
+              "container",
+              "delete"
+            ]
+          },
           "reason": "az storage container delete removes an Azure storage container.",
           "severity": "critical",
           "explanation": "Deleting an Azure storage container removes all blobs within it permanently. Unless soft delete is enabled, data cannot be recovered. Applications and services referencing this container will fail.\n\nSafer alternatives:\n- az storage container list: Review containers first\n- az storage blob list -c X: Inventory contents\n- Enable soft delete before testing deletions"
         },
         {
           "name": "az-storage-blob-delete-batch",
-          "regex": "\\baz\\s+storage\\s+blob\\s+delete-batch\\b",
+          "when": {
+            "command": [
+              "az"
+            ],
+            "subcommand": [
+              "storage",
+              "blob",
+              "delete-batch"
+            ]
+          },
           "reason": "az storage blob delete-batch removes multiple blobs from Azure storage.",
           "severity": "high",
           "explanation": "Batch deletion removes many blobs at once based on patterns. Without soft delete enabled, removed blobs cannot be recovered. Patterns may match more files than expected.\n\nSafer alternatives:\n- az storage blob list --pattern: Preview matching blobs\n- Enable soft delete for recovery window\n- azcopy copy to backup before deletion"
         },
         {
           "name": "az-storage-blob-delete",
-          "regex": "\\baz\\s+storage\\s+blob\\s+delete(?:\\s|$)",
+          "when": {
+            "command": [
+              "az"
+            ],
+            "subcommand": [
+              "storage",
+              "blob",
+              "delete"
+            ]
+          },
           "reason": "az storage blob delete removes a blob from Azure storage.",
           "severity": "medium",
           "explanation": "Deleting a single blob removes it from storage. Without soft delete, the data is permanently lost. Applications expecting this blob will receive 404 errors.\n\nSafer alternatives:\n- az storage blob show: Verify blob before deletion\n- az storage blob download: Backup content first\n- Enable soft delete for recovery"
         },
         {
           "name": "az-storage-account-delete",
-          "regex": "\\baz\\s+storage\\s+account\\s+delete\\b",
+          "when": {
+            "command": [
+              "az"
+            ],
+            "subcommand": [
+              "storage",
+              "account",
+              "delete"
+            ]
+          },
           "reason": "az storage account delete removes an entire Azure storage account.",
           "severity": "critical",
           "explanation": "Deleting a storage account removes all containers, blobs, tables, queues, and file shares within it. The account name may not be immediately reclaimable. All dependent applications will fail completely.\n\nSafer alternatives:\n- az storage account show: Review account configuration\n- azcopy copy: Backup all data before deletion\n- Verify no active resources depend on this account"
         },
         {
           "name": "azcopy-remove",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*remove\\b",
+          "when": {
+            "command": [
+              "az"
+            ]
+          },
           "reason": "azcopy remove deletes files from Azure storage.",
           "severity": "high",
           "explanation": "The azcopy remove command deletes blobs from Azure storage. With --recursive, entire directory trees are removed. Without soft delete, data is permanently lost and cannot be recovered.\n\nSafer alternatives:\n- azcopy list: Preview files to be deleted\n- Enable soft delete before removing\n- azcopy copy to backup location first"
         },
         {
           "name": "azcopy-sync-delete",
-          "regex": "\\bazcopy\\s+(?:--\\S+\\s+)*sync\\b.*--delete-destination\\b",
+          "when": {
+            "command": [
+              "az"
+            ]
+          },
           "reason": "azcopy sync --delete-destination removes destination files not in source.",
           "severity": "high",
           "explanation": "The --delete-destination flag removes files from the destination that don't exist in the source. If source and destination are swapped, or if source is unexpectedly empty, this can cause complete data loss.\n\nSafer alternatives:\n- azcopy sync --dry-run: Preview changes first\n- azcopy sync without --delete-destination: Only adds/updates\n- Backup destination before syncing"

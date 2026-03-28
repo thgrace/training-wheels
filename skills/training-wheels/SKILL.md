@@ -4,11 +4,11 @@ description: >
   TW (Training Wheels) pre-execution safety hook. Denies destructive shell
   commands before execution. Use when a command is denied by TW, when
   suggesting potentially destructive shell commands, or when the user asks
-  about TW configuration or allow rules.
+  about TW configuration or override rules.
 license: MIT
 metadata:
   author: thgrace
-  version: "1.0"
+  version: "2.0"
 compatibility: Requires the tw binary installed and in PATH.
 hooks:
   PreToolUse:
@@ -27,9 +27,10 @@ automatically on every shell command.
 
 ## Critical Rules
 
-1. **NEVER execute `tw allow` commands.** You may only suggest them to the user to run manually in their own terminal. TW denies `tw allow` when run through the hook — only the human user can modify safety rules.
-2. **NEVER override a denial without explicit user approval.**
-3. **Defer to the user** on all security decisions.
+1. **NEVER execute `tw override add allow` or `tw rule add allow` or `tw rule remove` commands.** You may only suggest them to the user to run manually. TW denies these when run through the hook — only the human user can loosen safety rules.
+2. **You MAY execute `tw rule add deny` and `tw rule add ask`** — these tighten security.
+3. **NEVER override a denial without explicit user approval.**
+4. **Defer to the user** on all security decisions.
 
 ## What Gets Denied
 
@@ -79,9 +80,9 @@ evaluated, and any suggested alternatives.
 Tell the user:
 - Which rule denied the command and why
 - The safer alternatives suggested by `tw explain`, if any
-- That they can add an allow rule if needed (see step 3)
+- That they can add an override if needed (see step 3)
 
-### 3. Suggest alternatives or allow rules
+### 3. Suggest alternatives or overrides
 
 **Try a safer alternative first.** Common substitutions:
 
@@ -94,30 +95,27 @@ Tell the user:
 | `git clean -fd` | `git clean -n` (dry run first) |
 | `docker system prune -a` | `docker image prune` (targeted) |
 
-**If no alternative works**, suggest the user run an allow command in their own terminal:
+**If no alternative works**, suggest the user run an override or rule command in their own terminal:
 
 ```sh
 # Session-scoped allow (current agent session only)
-tw allow --session "rm -rf ./dist"
+tw override add allow --session "rm -rf ./dist"
 
-# Time-scoped allow (expires after duration)
-tw allow --time 30m "rm -rf ./build"
+# Permanent allow (via tw rule — all permanent policy uses tw rule)
+tw rule add allow --name "allow-dist-cleanup" --command "rm" --flag "-rf" --arg-exact "./dist" --reason "Build output cleanup"
 
-# Permanent allow
-tw allow --permanent "rm -rf ./dist" --reason "Build output cleanup"
+# Rule-based allow (disables a specific pack pattern permanently)
+tw rule add allow --name "allow-reset-hard" --rule "core.git:reset-hard" --reason "Needed for CI"
 
-# Prefix-based allow (matches any command starting with this)
-tw allow --permanent --prefix "rm -rf ./build" --reason "Build artifacts"
-
-# Rule-based allow (disables a specific pattern)
-tw allow --permanent --rule "core:rm-rf-aggressive" --reason "Needed for CI cleanup"
+# Permanent ask (requires confirmation)
+tw rule add ask --name "review-force-push" --command "git" --subcommand "push" --flag "--force" --unless-flag "--force-with-lease" --reason "Require human review"
 ```
 
-**Important:** You must NOT execute `tw allow` yourself — only suggest the command for the user to run manually. TW's self-protection denies `tw allow` when run through the hook.
+**Important:** You must NOT execute `tw override add allow`, `tw rule add allow`, or `tw rule remove` yourself — only suggest them for the user to run manually. You MAY execute `tw rule add deny` and `tw rule add ask` since these tighten security.
 
 ### 4. NEVER weaken protections without user approval
 
-**Do not suggest `tw allow` unless the user explicitly asks for it.** A denial
+**Do not suggest `tw override` unless the user explicitly asks for it.** A denial
 means Training Wheels determined the command is dangerous. Always defer to the user's
 judgment before bypassing protection.
 
@@ -128,9 +126,12 @@ judgment before bypassing protection.
 | `tw test "command"` | Check if a command would be denied (without executing it) |
 | `tw explain "command"` | Detailed explanation of why a command is denied or allowed |
 | `tw explain --json "command"` | Machine-readable explanation output |
-| `tw allow --list` | List all active allow rules |
-| `tw allow --session "command"` | Allow for current session only (suggest to user) |
-| `tw allow --permanent "command"` | Permanent allow rule (suggest to user) |
+| `tw packs --json` | List pack metadata and current enablement |
+| `tw override list` | List all active session/time overrides |
+| `tw override add allow --session "command"` | Allow for current session only (suggest to user) |
+| `tw rule add deny --name N --command C --reason R` | Add a permanent deny rule (you may execute) |
+| `tw rule add allow --name N --rule ID --reason R` | Permanent allow by rule ID (suggest to user) |
+| `tw rule list` | List all custom rules |
 
 ## Pre-checking Commands
 
@@ -147,30 +148,32 @@ then needing to explain and find alternatives.
 
 ## Gotchas
 
+- **Structural Matching:** TW uses an AST parser (tree-sitter) to understand command structure. It doesn't just use regex; it understands commands, subcommands, flags, and arguments.
 - **Inline code is scanned:** `bash -c`, `sh -c`, `eval`, and similar
   wrappers are unpacked — the inner command is evaluated.
 - **Temp directories are always safe:** `/tmp/*`, `/var/tmp/*`, and
   `$TMPDIR/*` paths are never denied for filesystem operations.
 - **`sudo` and `env` are stripped:** `sudo rm -rf /` is evaluated as
   `rm -rf /` — the wrapper doesn't bypass detection.
-- **Self-protection:** `tw allow` commands are denied when run through the
-  hook. Only the human user can modify allow rules directly in their terminal.
-- **Config location:** Project config is `.tw.json` at the project root.
-  Allow rules are at `.tw/overrides.json` (project) or
-  `~/.tw/overrides.json` (user-level).
+- **Self-protection:** `tw override add allow`, `tw rule add allow`, and `tw rule remove` commands are denied when run through the
+  hook. Only the human user can loosen safety rules directly in their terminal.
+  You may run `tw rule add deny` and `tw rule add ask`.
+- **Config location:** Global config is `~/.tw/config.json`.
+- **Override scope:** `tw override` is session/time-scoped only — no permanent
+  overrides. All permanent policy (deny, ask, allow) goes through `tw rule`.
 
 ## Behavioral Rules
 
-1. **NEVER execute `tw allow` commands** — only suggest them to the user.
+1. **NEVER execute `tw override add allow`, `tw rule add allow`, or `tw rule remove`** — only suggest them to the user. You MAY execute `tw rule add deny` and `tw rule add ask`.
 2. **NEVER weaken protections without explicit user approval.**
 3. **NEVER attempt to bypass a TW denial.** When a command is denied, do NOT
    try to circumvent the protection by:
-   - Base64-encoding the command (e.g., `echo "cm0gLXJmIC8=" | base64 -d | sh`)
+   - Base64-encoding the command
    - Hex-encoding or other encoding schemes
    - Writing the denied command to a script file and executing the script
-   - Using `eval`, `source`, or similar indirection to obscure the command
-   - Splitting the command across multiple steps to avoid pattern detection
-   - Using variable expansion or string concatenation to assemble the command
+   - Using `eval`, `source`, or similar indirection
+   - Splitting the command across multiple steps
+   - Using variable expansion or string concatenation
    - Invoking an interpreter (python, perl, ruby, node) to run the equivalent operation
    - Any other obfuscation or evasion technique
 
@@ -179,5 +182,5 @@ then needing to explain and find alternatives.
 4. **Use `tw test` to pre-check** potentially destructive commands before
    suggesting them.
 5. **Use `tw explain` when a denial occurs** to provide informed guidance.
-6. **Prefer safer alternatives** over allow rules.
+6. **Prefer safer alternatives** over override rules.
 7. **Defer to the user** on all security decisions.

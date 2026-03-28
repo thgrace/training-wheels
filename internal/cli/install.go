@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/thgrace/training-wheels/internal/agentsettings"
 	"github.com/thgrace/training-wheels/internal/config"
 	"github.com/thgrace/training-wheels/internal/exitcodes"
 	"github.com/thgrace/training-wheels/internal/logger"
@@ -21,6 +20,7 @@ import (
 var (
 	installProject     bool
 	installAgentFilter string
+	installJSON        bool
 )
 
 var installCmd = &cobra.Command{
@@ -30,6 +30,7 @@ var installCmd = &cobra.Command{
 }
 
 func init() {
+	bindJSONOutputFlags(installCmd.Flags(), &installJSON)
 	installCmd.Flags().BoolVar(&installProject, "project", false, "Install to project-level settings")
 	installCmd.Flags().StringVar(&installAgentFilter, "agent", "", "Comma-separated list of agents to target (claude,cursor,gemini,copilot)")
 }
@@ -37,6 +38,7 @@ func init() {
 var (
 	uninstallProject     bool
 	uninstallAgentFilter string
+	uninstallJSON        bool
 )
 
 var uninstallCmd = &cobra.Command{
@@ -46,180 +48,287 @@ var uninstallCmd = &cobra.Command{
 }
 
 func init() {
+	bindJSONOutputFlags(uninstallCmd.Flags(), &uninstallJSON)
 	uninstallCmd.Flags().BoolVar(&uninstallProject, "project", false, "Remove from project-level settings")
 	uninstallCmd.Flags().StringVar(&uninstallAgentFilter, "agent", "", "Comma-separated list of agents to target (claude,cursor,gemini,copilot)")
 }
 
+type installAction struct {
+	Kind    string `json:"kind"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Path    string `json:"path,omitempty"`
+	Agent   string `json:"agent,omitempty"`
+}
+
+type installReporter struct {
+	w       io.Writer
+	json    bool
+	actions []installAction
+}
+
+func newInstallReporter(w io.Writer, jsonOutput bool) *installReporter {
+	return &installReporter{w: w, json: useJSONOutput(jsonOutput)}
+}
+
+func (r *installReporter) record(action installAction) {
+	if r.json {
+		r.actions = append(r.actions, action)
+		return
+	}
+	fmt.Fprintln(r.w, action.Message)
+}
+
+func (r *installReporter) flush() error {
+	if !r.json {
+		return nil
+	}
+	return writeJSONOutput(r.w, r.actions)
+}
+
+func stableBinaryPath(home string) string {
+	name := "tw"
+	if osutil.IsWindows() {
+		name = "tw.exe"
+	}
+	return filepath.Join(home, ".tw", "bin", name)
+}
+
 func runInstall(cmd *cobra.Command, args []string) error {
+	reporter := newInstallReporter(cmd.OutOrStdout(), installJSON)
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		logger.Error("cannot determine home directory", "error", err)
 		os.Exit(exitcodes.IOError)
 	}
 
-	if _, err := exec.LookPath("tw"); err != nil {
-		logger.Error("cannot install hooks", "error", "tw not found in PATH; install it first and restart your shell")
+	stablePath := stableBinaryPath(home)
+	currentExec, err := os.Executable()
+	if err != nil {
+		logger.Error("cannot determine current binary path", "error", err)
 		os.Exit(exitcodes.IOError)
 	}
 
+	if currentExec != stablePath {
+		if err := os.MkdirAll(filepath.Dir(stablePath), 0o755); err != nil {
+			logger.Error("failed to create stable bin directory", "error", err)
+			os.Exit(exitcodes.IOError)
+		}
+		if err := osutil.CopyFile(currentExec, stablePath); err != nil {
+			logger.Error("failed to install binary to stable path", "error", err)
+			os.Exit(exitcodes.IOError)
+		}
+		reporter.record(installAction{
+			Kind:    "binary",
+			Status:  "installed",
+			Message: fmt.Sprintf("Installed binary to %s", stablePath),
+			Path:    stablePath,
+		})
+	}
+
 	// 1. Create user-level config if it doesn't exist.
-	createUserConfig(cmd.OutOrStdout(), home)
+	createUserConfig(reporter)
 
 	// 2. Install agent skill (cross-client)
 	crossClientDir := filepath.Join(home, skills.SkillRelDir)
-	installSkill(cmd.OutOrStdout(), crossClientDir)
+	installSkill(reporter, crossClientDir)
 
 	// 3. Install the hook into agent settings
-	filter := parseAgentFilter(installAgentFilter)
-	agents := detectAgents(home, filter)
+	filter := agentsettings.ParseFilter(installAgentFilter)
+	agents := agentsettings.Detect(home, filter)
 	if len(agents) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No supported AI agent installations detected.")
-		fmt.Fprintln(cmd.OutOrStdout(), "Tip: Run 'tw install --agent <name>' to install for a specific agent.")
-		return nil
+		reporter.record(installAction{
+			Kind:    "agent_detection",
+			Status:  "none",
+			Message: "No supported AI agent installations detected.",
+		})
+		reporter.record(installAction{
+			Kind:    "hint",
+			Status:  "info",
+			Message: "Tip: Run 'tw install --agent <name>' to install for a specific agent.",
+		})
+		return reporter.flush()
 	}
 
 	// 3.5 Install Claude-specific skill if Claude is detected.
 	for _, a := range agents {
 		if a.Name == "claude" {
 			claudeDir := filepath.Join(home, skills.ClaudeSkillRelDir)
-			installSkill(cmd.OutOrStdout(), claudeDir)
+			installSkill(reporter, claudeDir)
 			break
 		}
 	}
 
 	for _, a := range agents {
-		path := agentSettingsPath(a, installProject, home)
-		installForAgent(cmd.OutOrStdout(), a, path, "tw")
+		path := agentsettings.SettingsPath(a, installProject, home)
+		installForAgent(reporter, a, path, stablePath)
 	}
-	return nil
+	return reporter.flush()
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
+	reporter := newInstallReporter(cmd.OutOrStdout(), uninstallJSON)
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		logger.Error("cannot determine home directory", "error", err)
 		os.Exit(exitcodes.IOError)
 	}
 
-	filter := parseAgentFilter(uninstallAgentFilter)
-	agents := detectAgents(home, filter)
+	stablePath := stableBinaryPath(home)
+
+	filter := agentsettings.ParseFilter(uninstallAgentFilter)
+	agents := agentsettings.Detect(home, filter)
 	if len(agents) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No supported AI agent installations detected.")
-		fmt.Fprintln(cmd.OutOrStdout(), "Tip: Run 'tw uninstall --agent <name>' to uninstall for a specific agent.")
-		return nil
+		reporter.record(installAction{
+			Kind:    "agent_detection",
+			Status:  "none",
+			Message: "No supported AI agent installations detected.",
+		})
+		reporter.record(installAction{
+			Kind:    "hint",
+			Status:  "info",
+			Message: "Tip: Run 'tw uninstall --agent <name>' to uninstall for a specific agent.",
+		})
+		return reporter.flush()
 	}
 
 	for _, a := range agents {
-		path := agentSettingsPath(a, uninstallProject, home)
-		uninstallForAgent(cmd.OutOrStdout(), a, path, "tw")
+		path := agentsettings.SettingsPath(a, uninstallProject, home)
+		uninstallForAgent(reporter, a, path, stablePath)
 	}
 
 	// Remove agent skills from both locations.
-	uninstallSkill(cmd.OutOrStdout(), filepath.Join(home, skills.SkillRelDir))
-	uninstallSkill(cmd.OutOrStdout(), filepath.Join(home, skills.ClaudeSkillRelDir))
+	uninstallSkill(reporter, filepath.Join(home, skills.SkillRelDir))
+	uninstallSkill(reporter, filepath.Join(home, skills.ClaudeSkillRelDir))
 
-	return nil
+	return reporter.flush()
 }
 
-func installForAgent(out io.Writer, a agentDef, settingsPath, twHookRef string) {
-	settings, _ := readSettings(settingsPath)
+func installForAgent(reporter *installReporter, a agentsettings.Agent, settingsPath, twHookRef string) {
+	settings, _, err := agentsettings.ReadSettings(settingsPath)
+	if err != nil {
+		logger.Error("error reading settings", "path", settingsPath, "error", err)
+		if isSettingsParseError(err) {
+			os.Exit(exitcodes.ConfigError)
+		}
+		os.Exit(exitcodes.IOError)
+	}
 	if a.HookExists(settings, twHookRef) {
-		fmt.Fprintf(out, "TW hook already installed in %s  [%s]\n", settingsPath, a.Name)
+		reporter.record(installAction{
+			Kind:    "hook",
+			Status:  "unchanged",
+			Message: fmt.Sprintf("TW hook already installed in %s  [%s]", settingsPath, a.Name),
+			Path:    settingsPath,
+			Agent:   a.Name,
+		})
 		return
 	}
 	a.AddHookEntry(settings, twHookRef)
-	writeSettings(settingsPath, settings)
-	fmt.Fprintf(out, "TW hook installed to %s  [%s]\n", settingsPath, a.Name)
+	if err := agentsettings.WriteSettings(settingsPath, settings); err != nil {
+		logger.Error("error writing settings", "path", settingsPath, "error", err)
+		os.Exit(exitcodes.IOError)
+	}
+	reporter.record(installAction{
+		Kind:    "hook",
+		Status:  "installed",
+		Message: fmt.Sprintf("TW hook installed to %s  [%s]", settingsPath, a.Name),
+		Path:    settingsPath,
+		Agent:   a.Name,
+	})
 }
 
-func uninstallForAgent(out io.Writer, a agentDef, settingsPath, twHookRef string) {
-	settings, existed := readSettings(settingsPath)
+func uninstallForAgent(reporter *installReporter, a agentsettings.Agent, settingsPath, twHookRef string) {
+	settings, existed, err := agentsettings.ReadSettings(settingsPath)
+	if err != nil {
+		logger.Error("error reading settings", "path", settingsPath, "error", err)
+		if isSettingsParseError(err) {
+			os.Exit(exitcodes.ConfigError)
+		}
+		os.Exit(exitcodes.IOError)
+	}
 	if !existed {
-		fmt.Fprintf(out, "TW hook not found in %s  [%s]\n", settingsPath, a.Name)
+		reporter.record(installAction{
+			Kind:    "hook",
+			Status:  "missing",
+			Message: fmt.Sprintf("TW hook not found in %s  [%s]", settingsPath, a.Name),
+			Path:    settingsPath,
+			Agent:   a.Name,
+		})
 		return
 	}
 	if !a.RemoveHookEntry(settings, twHookRef) {
-		fmt.Fprintf(out, "TW hook not found in %s  [%s]\n", settingsPath, a.Name)
+		reporter.record(installAction{
+			Kind:    "hook",
+			Status:  "missing",
+			Message: fmt.Sprintf("TW hook not found in %s  [%s]", settingsPath, a.Name),
+			Path:    settingsPath,
+			Agent:   a.Name,
+		})
 		return
 	}
-	writeSettings(settingsPath, settings)
-	fmt.Fprintf(out, "TW hook removed from %s  [%s]\n", settingsPath, a.Name)
+	if err := agentsettings.WriteSettings(settingsPath, settings); err != nil {
+		logger.Error("error writing settings", "path", settingsPath, "error", err)
+		os.Exit(exitcodes.IOError)
+	}
+	reporter.record(installAction{
+		Kind:    "hook",
+		Status:  "removed",
+		Message: fmt.Sprintf("TW hook removed from %s  [%s]", settingsPath, a.Name),
+		Path:    settingsPath,
+		Agent:   a.Name,
+	})
 }
 
-// readSettings reads and JSON-unmarshals an agent settings file.
-// Returns the settings map and whether the file existed.
-// Exits on read errors (other than not-found) or parse errors.
-func readSettings(path string) (settings map[string]interface{}, existed bool) {
-	settings = make(map[string]interface{})
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return settings, false
-		}
-		logger.Error("error reading settings", "path", path, "error", err)
-		os.Exit(exitcodes.IOError)
-	}
-	if len(data) > 0 {
-		if err := json.Unmarshal(data, &settings); err != nil {
-			logger.Error("error parsing settings", "path", path, "error", err)
-			os.Exit(exitcodes.ConfigError)
-		}
-	}
-	return settings, true
-}
-
-// writeSettings JSON-marshals settings and atomically writes them to path.
-// Creates parent directories as needed. Exits on errors.
-func writeSettings(path string, settings map[string]interface{}) {
-	output, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		logger.Error("error marshaling settings", "error", err)
-		os.Exit(exitcodes.IOError)
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		logger.Error("error creating directory", "dir", dir, "error", err)
-		os.Exit(exitcodes.IOError)
-	}
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, append(output, '\n'), 0o644); err != nil {
-		logger.Error("error writing settings", "path", tmpPath, "error", err)
-		os.Exit(exitcodes.IOError)
-	}
-	if err := osutil.AtomicRename(tmpPath, path); err != nil {
-		logger.Error("error renaming settings", "from", tmpPath, "to", path, "error", err)
-		os.Exit(exitcodes.IOError)
-	}
-}
-
-func installSkill(out io.Writer, dir string) {
+func installSkill(reporter *installReporter, dir string) {
 	if skills.ExistsAt(dir) {
-		fmt.Fprintf(out, "Agent skill already installed in %s\n", dir)
+		reporter.record(installAction{
+			Kind:    "skill",
+			Status:  "unchanged",
+			Message: fmt.Sprintf("Agent skill already installed in %s", dir),
+			Path:    dir,
+		})
 		return
 	}
 	if err := skills.InstallTo(dir); err != nil {
 		logger.Warn("could not install agent skill", "dir", dir, "error", err)
 		return
 	}
-	fmt.Fprintf(out, "Agent skill installed to %s\n", dir)
+	reporter.record(installAction{
+		Kind:    "skill",
+		Status:  "installed",
+		Message: fmt.Sprintf("Agent skill installed to %s", dir),
+		Path:    dir,
+	})
 }
 
-func uninstallSkill(out io.Writer, dir string) {
+func uninstallSkill(reporter *installReporter, dir string) {
 	if err := skills.UninstallFrom(dir); err != nil {
 		logger.Warn("could not remove agent skill", "dir", dir, "error", err)
 		return
 	}
-	fmt.Fprintf(out, "Agent skill removed from %s\n", dir)
+	reporter.record(installAction{
+		Kind:    "skill",
+		Status:  "removed",
+		Message: fmt.Sprintf("Agent skill removed from %s", dir),
+		Path:    dir,
+	})
 }
 
-func createUserConfig(out io.Writer, home string) {
+func createUserConfig(reporter *installReporter) {
 	cfgPath, err := config.UserConfigPath()
 	if err != nil {
 		logger.Warn("could not determine user config path", "error", err)
 		return
 	}
 	if _, err := os.Stat(cfgPath); err == nil {
-		fmt.Fprintf(out, "User config already exists at %s\n", cfgPath)
+		reporter.record(installAction{
+			Kind:    "config",
+			Status:  "unchanged",
+			Message: fmt.Sprintf("User config already exists at %s", cfgPath),
+			Path:    cfgPath,
+		})
 		return
 	}
 	dir := filepath.Dir(cfgPath)
@@ -237,52 +346,19 @@ func createUserConfig(out io.Writer, home string) {
 		logger.Warn("could not write user config", "path", cfgPath, "error", err)
 		return
 	}
-	fmt.Fprintf(out, "User config created at %s\n", cfgPath)
+	reporter.record(installAction{
+		Kind:    "config",
+		Status:  "created",
+		Message: fmt.Sprintf("User config created at %s", cfgPath),
+		Path:    cfgPath,
+	})
 }
 
-func agentSettingsPath(a agentDef, project bool, home string) string {
-	if project {
-		return filepath.Join(a.ProjectDir, a.ProjectFile)
+func isSettingsParseError(err error) bool {
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return true
 	}
-	return filepath.Join(home, a.UserDir, a.UserFile)
-}
-
-func detectAgents(home string, filter []string) []agentDef {
-	if len(filter) > 0 {
-		filterSet := make(map[string]bool, len(filter))
-		for _, name := range filter {
-			filterSet[strings.ToLower(strings.TrimSpace(name))] = true
-		}
-		var result []agentDef
-		for _, a := range allAgents {
-			if filterSet[a.Name] {
-				result = append(result, a)
-			}
-		}
-		return result
-	}
-
-	var result []agentDef
-	for _, a := range allAgents {
-		dir := filepath.Join(home, a.UserDir)
-		if _, err := os.Stat(dir); err == nil {
-			result = append(result, a)
-		}
-	}
-	return result
-}
-
-func parseAgentFilter(raw string) []string {
-	if raw == "" {
-		return nil
-	}
-	parts := strings.Split(raw, ",")
-	var result []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
+	var typeErr *json.UnmarshalTypeError
+	return errors.As(err, &typeErr)
 }

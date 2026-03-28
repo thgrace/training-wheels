@@ -1,7 +1,6 @@
 package session
 
 import (
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,10 +15,20 @@ func TestAdd(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	e := a.Add(secret, "exact", "rm -rf ./dist", "Build cleanup", time.Time{})
+	e := a.Add(secret, "allow", "exact", "rm -rf ./dist", "Build cleanup", time.Time{})
 
 	if !strings.HasPrefix(e.ID, "sa-") {
 		t.Errorf("ID = %q, want prefix sa-", e.ID)
+	}
+	idSuffix := strings.TrimPrefix(e.ID, "sa-")
+	if len(idSuffix) != 16 {
+		t.Errorf("ID suffix length = %d, want 16", len(idSuffix))
+	}
+	if _, err := hex.DecodeString(idSuffix); err != nil {
+		t.Errorf("ID suffix should be hex: %v", err)
+	}
+	if e.Action != "allow" {
+		t.Errorf("Action = %q, want allow", e.Action)
 	}
 	if e.Kind != "exact" {
 		t.Errorf("Kind = %q, want exact", e.Kind)
@@ -49,7 +58,7 @@ func TestAdd_WithExpiry(t *testing.T) {
 	secret := []byte("test-secret-key-32-bytes-long!!")
 	expiry := time.Now().Add(1 * time.Hour).UTC().Truncate(time.Second)
 
-	e := a.Add(secret, "prefix", "make ", "Allow make commands", expiry)
+	e := a.Add(secret, "allow", "prefix", "make ", "Allow make commands", expiry)
 
 	if e.ExpiresAt.IsZero() {
 		t.Error("ExpiresAt should be set for timed entry")
@@ -63,9 +72,9 @@ func TestRemove(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	a.Add(secret, "exact", "cmd1", "r1", time.Time{})
-	e2 := a.Add(secret, "exact", "cmd2", "r2", time.Time{})
-	a.Add(secret, "exact", "cmd3", "r3", time.Time{})
+	a.Add(secret, "allow", "exact", "cmd1", "r1", time.Time{})
+	e2 := a.Add(secret, "allow", "exact", "cmd2", "r2", time.Time{})
+	a.Add(secret, "allow", "exact", "cmd3", "r3", time.Time{})
 
 	if !a.Remove(e2.ID) {
 		t.Error("Remove should return true for existing ID")
@@ -86,7 +95,7 @@ func TestRemove_NotFound(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	a.Add(secret, "exact", "cmd1", "r1", time.Time{})
+	a.Add(secret, "allow", "exact", "cmd1", "r1", time.Time{})
 
 	if a.Remove("nonexistent-id") {
 		t.Error("Remove should return false for non-existent ID")
@@ -96,109 +105,109 @@ func TestRemove_NotFound(t *testing.T) {
 	}
 }
 
-func TestMatchesAllow_Exact(t *testing.T) {
+func TestMatches_Exact(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	a.Add(secret, "exact", "rm -rf ./dist", "cleanup", time.Time{})
+	a.Add(secret, "allow", "exact", "rm -rf ./dist", "cleanup", time.Time{})
 
-	if e := a.MatchesAllow("rm -rf ./dist", ""); e == nil {
+	if e := a.Matches("rm -rf ./dist", ""); e == nil {
 		t.Error("exact match should succeed for identical command")
 	}
-	if e := a.MatchesAllow("rm -rf ./dist2", ""); e != nil {
+	if e := a.Matches("rm -rf ./dist2", ""); e != nil {
 		t.Error("exact match should not match different command")
 	}
-	if e := a.MatchesAllow("rm -rf ./dis", ""); e != nil {
+	if e := a.Matches("rm -rf ./dis", ""); e != nil {
 		t.Error("exact match should not match substring")
 	}
 }
 
-func TestMatchesAllow_Prefix(t *testing.T) {
+func TestMatches_Prefix(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	a.Add(secret, "prefix", "make clean", "build", time.Time{})
+	a.Add(secret, "allow", "prefix", "make clean", "build", time.Time{})
 
-	if e := a.MatchesAllow("make clean", ""); e == nil {
+	if e := a.Matches("make clean", ""); e == nil {
 		t.Error("prefix match should succeed for exact match")
 	}
-	if e := a.MatchesAllow("make clean all", ""); e == nil {
+	if e := a.Matches("make clean all", ""); e == nil {
 		t.Error("prefix match should succeed for extended command")
 	}
-	if e := a.MatchesAllow("make build", ""); e != nil {
+	if e := a.Matches("make build", ""); e != nil {
 		t.Error("prefix match should not match different prefix")
 	}
 }
 
-func TestMatchesAllow_Rule(t *testing.T) {
+func TestMatches_Rule(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
 	// Exact rule ID match.
-	a.Add(secret, "rule", "core.git:reset-hard", "allow reset", time.Time{})
-	if e := a.MatchesAllow("", "core.git:reset-hard"); e == nil {
+	a.Add(secret, "allow", "rule", "core.git:reset-hard", "allow reset", time.Time{})
+	if e := a.Matches("", "core.git:reset-hard"); e == nil {
 		t.Error("rule match should succeed for exact ID")
 	}
-	if e := a.MatchesAllow("", "core.git:push-force"); e != nil {
+	if e := a.Matches("", "core.git:push-force"); e != nil {
 		t.Error("rule match should not match different rule")
 	}
 
 	// Wildcard rule match.
-	a.Add(secret, "rule", "core.git:*", "allow all git", time.Time{})
-	if e := a.MatchesAllow("", "core.git:push-force"); e == nil {
+	a.Add(secret, "allow", "rule", "core.git:*", "allow all git", time.Time{})
+	if e := a.Matches("", "core.git:push-force"); e == nil {
 		t.Error("wildcard rule should match core.git:push-force")
 	}
-	if e := a.MatchesAllow("", "core.filesystem:rm-rf"); e != nil {
+	if e := a.Matches("", "core.filesystem:rm-rf"); e != nil {
 		t.Error("wildcard rule should not match different pack")
 	}
 
 	// Global wildcard.
 	a2 := &Allowlist{Token: "test-token", path: "/dev/null"}
-	a2.Add(secret, "rule", "*", "allow everything", time.Time{})
-	if e := a2.MatchesAllow("", "anything:here"); e == nil {
+	a2.Add(secret, "allow", "rule", "*", "allow everything", time.Time{})
+	if e := a2.Matches("", "anything:here"); e == nil {
 		t.Error("global wildcard should match everything")
 	}
 }
 
-func TestMatchesAllow_RuleMultiWildcard(t *testing.T) {
+func TestMatches_RuleMultiWildcard(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	a.Add(secret, "rule", "core.*:reset-*", "allow core resets", time.Time{})
+	a.Add(secret, "allow", "rule", "core.*:reset-*", "allow core resets", time.Time{})
 
-	if e := a.MatchesAllow("", "core.git:reset-hard"); e == nil {
+	if e := a.Matches("", "core.git:reset-hard"); e == nil {
 		t.Error("multi-wildcard should match core.git:reset-hard")
 	}
-	if e := a.MatchesAllow("", "core.filesystem:reset-soft"); e == nil {
+	if e := a.Matches("", "core.filesystem:reset-soft"); e == nil {
 		t.Error("multi-wildcard should match core.filesystem:reset-soft")
 	}
-	if e := a.MatchesAllow("", "core.git:push-force"); e != nil {
+	if e := a.Matches("", "core.git:push-force"); e != nil {
 		t.Error("multi-wildcard should not match core.git:push-force")
 	}
 }
 
-func TestMatchesAllow_Expired(t *testing.T) {
+func TestMatches_Expired(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
 	// Add entry that expired in the past.
 	pastTime := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
-	a.Add(secret, "exact", "rm -rf ./dist", "expired cleanup", pastTime)
+	a.Add(secret, "allow", "exact", "rm -rf ./dist", "expired cleanup", pastTime)
 
-	if e := a.MatchesAllow("rm -rf ./dist", ""); e != nil {
+	if e := a.Matches("rm -rf ./dist", ""); e != nil {
 		t.Error("expired entry should not match")
 	}
 }
 
-func TestMatchesAllow_NotExpired(t *testing.T) {
+func TestMatches_NotExpired(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
 	// Add entry that expires in the future.
 	futureTime := time.Now().Add(1 * time.Hour).UTC().Truncate(time.Second)
-	a.Add(secret, "exact", "rm -rf ./dist", "future cleanup", futureTime)
+	a.Add(secret, "allow", "exact", "rm -rf ./dist", "future cleanup", futureTime)
 
-	if e := a.MatchesAllow("rm -rf ./dist", ""); e == nil {
+	if e := a.Matches("rm -rf ./dist", ""); e == nil {
 		t.Error("non-expired entry should match")
 	}
 }
@@ -210,9 +219,9 @@ func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(dir, "tw-session-"+token+".json")
 
 	a := &Allowlist{Token: token, path: path}
-	a.Add(secret, "exact", "rm -rf ./dist", "cleanup", time.Time{})
-	a.Add(secret, "prefix", "make ", "build commands", time.Time{})
-	a.Add(secret, "rule", "core.git:*", "allow git", time.Time{})
+	a.Add(secret, "allow", "exact", "rm -rf ./dist", "cleanup", time.Time{})
+	a.Add(secret, "allow", "prefix", "make ", "build commands", time.Time{})
+	a.Add(secret, "allow", "rule", "core.git:*", "allow git", time.Time{})
 
 	if err := a.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -228,15 +237,8 @@ func TestSaveLoad(t *testing.T) {
 	}
 
 	// Load back and verify.
-	a2, err := Load(token, secret)
-	if err != nil {
-		// Load uses AllowlistPath(token) to determine path.
-		// Since we saved to a custom path, load directly by setting up properly.
-		// Let's instead load from the file directly.
-		t.Logf("Load with standard path failed (expected if AllowlistPath differs): %v", err)
-	}
-
-	// Load by creating an Allowlist with the same path and reading manually.
+	var a2 *Allowlist
+	// Manual load from the file directly.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -253,6 +255,9 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if a2.Entries[0].Value != "rm -rf ./dist" {
 		t.Errorf("entry 0 value = %q", a2.Entries[0].Value)
+	}
+	if a2.Entries[0].Action != "allow" {
+		t.Errorf("entry 0 action = %q", a2.Entries[0].Action)
 	}
 	if a2.Entries[0].Kind != "exact" {
 		t.Errorf("entry 0 kind = %q", a2.Entries[0].Kind)
@@ -292,8 +297,8 @@ func TestLoad_InvalidMAC(t *testing.T) {
 
 	// Create a valid allowlist and save it.
 	a := &Allowlist{Token: token, path: path}
-	a.Add(secret, "exact", "good-cmd", "valid entry", time.Time{})
-	a.Add(secret, "exact", "tampered-cmd", "will be tampered", time.Time{})
+	a.Add(secret, "allow", "exact", "good-cmd", "valid entry", time.Time{})
+	a.Add(secret, "allow", "exact", "tampered-cmd", "will be tampered", time.Time{})
 
 	// Tamper with the second entry's MAC before saving.
 	a.Entries[1].MAC = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
@@ -342,11 +347,11 @@ func TestLoad_ExpiredDiscarded(t *testing.T) {
 	a := &Allowlist{Token: token, path: path}
 
 	// Add a valid non-expired entry.
-	a.Add(secret, "exact", "alive-cmd", "still valid", time.Time{})
+	a.Add(secret, "allow", "exact", "alive-cmd", "still valid", time.Time{})
 
 	// Add an expired entry.
 	pastTime := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
-	a.Add(secret, "exact", "dead-cmd", "expired", pastTime)
+	a.Add(secret, "allow", "exact", "dead-cmd", "expired", pastTime)
 
 	if err := a.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -378,108 +383,12 @@ func TestLoad_ExpiredDiscarded(t *testing.T) {
 	}
 }
 
-func TestLoadOrCreateSecret(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "allow.key")
-
-	// First call creates the secret.
-	secret1, err := LoadOrCreateSecret(path)
-	if err != nil {
-		t.Fatalf("LoadOrCreateSecret (create): %v", err)
-	}
-	if len(secret1) != 32 {
-		t.Errorf("secret length = %d, want 32", len(secret1))
-	}
-
-	// Second call reads the same secret.
-	secret2, err := LoadOrCreateSecret(path)
-	if err != nil {
-		t.Fatalf("LoadOrCreateSecret (read): %v", err)
-	}
-	if !hmac.Equal(secret1, secret2) {
-		t.Error("second call should return the same secret")
-	}
-
-	// Verify file permissions.
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("secret file permissions = %o, want 0600", perm)
-	}
-}
-
-func TestLoadOrCreateSecret_ExistingFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "allow.key")
-
-	// Write known bytes.
-	knownSecret := make([]byte, 32)
-	for i := range knownSecret {
-		knownSecret[i] = byte(i)
-	}
-	if err := os.WriteFile(path, knownSecret, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Load should return the same bytes.
-	loaded, err := LoadOrCreateSecret(path)
-	if err != nil {
-		t.Fatalf("LoadOrCreateSecret: %v", err)
-	}
-	if !hmac.Equal(loaded, knownSecret) {
-		t.Error("loaded secret should match written bytes")
-	}
-}
-
-func TestTokenPath(t *testing.T) {
-	p := TokenPath()
-	if p == "" {
-		t.Fatal("TokenPath should not be empty")
-	}
-	if !strings.Contains(p, "session-token") {
-		t.Errorf("TokenPath = %q, want to contain session-token", p)
-	}
-}
-
-func TestAllowlistPath(t *testing.T) {
-	p := AllowlistPath("abc123def456")
-	if p == "" {
-		t.Fatal("AllowlistPath should not be empty")
-	}
-	if !strings.Contains(p, "abc123def456") {
-		t.Errorf("AllowlistPath = %q, should contain the token", p)
-	}
-
-	// Test with a short token.
-	p2 := AllowlistPath("ab")
-	if p2 == "" {
-		t.Fatal("AllowlistPath with short token should not be empty")
-	}
-	if !strings.Contains(p2, "ab") {
-		t.Errorf("AllowlistPath = %q, should contain the short token", p2)
-	}
-}
-
-func TestSecretPath(t *testing.T) {
-	p := SecretPath()
-	if p == "" {
-		t.Fatal("SecretPath should not be empty")
-	}
-	if !strings.Contains(p, "allow.key") {
-		t.Errorf("SecretPath = %q, want to contain allow.key", p)
-	}
-	if !strings.Contains(p, ".tw") {
-		t.Errorf("SecretPath = %q, want to contain .tw", p)
-	}
-}
-
 func TestComputeVerifyMAC(t *testing.T) {
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
 	entry := Entry{
 		ID:        "sa-abcd",
+		Action:    "allow",
 		Kind:      "exact",
 		Value:     "rm -rf ./dist",
 		Reason:    "cleanup",
@@ -488,7 +397,7 @@ func TestComputeVerifyMAC(t *testing.T) {
 	}
 
 	// Compute MAC.
-	mac := computeMAC(secret, entry.Kind, entry.Value, entry.ExpiresAt)
+	mac := computeMAC(secret, entry.Action, entry.Kind, entry.Value, entry.ExpiresAt)
 	if mac == "" {
 		t.Fatal("computeMAC should not return empty string")
 	}
@@ -502,6 +411,13 @@ func TestComputeVerifyMAC(t *testing.T) {
 	entry.MAC = mac
 	if !verifyMAC(secret, &entry) {
 		t.Error("verifyMAC should return true for valid MAC")
+	}
+
+	// Tamper with the Action and verify MAC fails.
+	tampered0 := entry
+	tampered0.Action = "ask"
+	if verifyMAC(secret, &tampered0) {
+		t.Error("verifyMAC should return false after tampering Action")
 	}
 
 	// Tamper with the value and verify MAC fails.
@@ -543,6 +459,7 @@ func TestComputeMAC_Deterministic(t *testing.T) {
 	secret := []byte("test-secret-key-32-bytes-long!!")
 	entry := Entry{
 		ID:        "sa-1234",
+		Action:    "allow",
 		Kind:      "exact",
 		Value:     "echo hello",
 		Reason:    "test",
@@ -550,8 +467,8 @@ func TestComputeMAC_Deterministic(t *testing.T) {
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	mac1 := computeMAC(secret, entry.Kind, entry.Value, entry.ExpiresAt)
-	mac2 := computeMAC(secret, entry.Kind, entry.Value, entry.ExpiresAt)
+	mac1 := computeMAC(secret, entry.Action, entry.Kind, entry.Value, entry.ExpiresAt)
+	mac2 := computeMAC(secret, entry.Action, entry.Kind, entry.Value, entry.ExpiresAt)
 
 	if mac1 != mac2 {
 		t.Errorf("computeMAC should be deterministic: %q != %q", mac1, mac2)
@@ -562,32 +479,35 @@ func TestComputeMAC_DifferentInputsDifferentMACs(t *testing.T) {
 	secret := []byte("test-secret-key-32-bytes-long!!")
 	base := Entry{
 		ID:        "sa-1234",
+		Action:    "allow",
 		Kind:      "exact",
 		Value:     "echo hello",
 		Reason:    "test",
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	baseMac := computeMAC(secret, base.Kind, base.Value, base.ExpiresAt)
+	baseMac := computeMAC(secret, base.Action, base.Kind, base.Value, base.ExpiresAt)
 
 	// Vary each HMAC-covered field and ensure MAC changes.
-	// HMAC covers: kind, value, expiresAt. ID, Reason, CreatedAt are NOT covered.
+	// HMAC covers: action, kind, value, expiresAt. ID, Reason, CreatedAt are NOT covered.
 	tests := []struct {
-		name      string
-		kind      string
-		value     string
-		expiresAt time.Time
+		name         string
+		action       string
+		kind         string
+		value        string
+		expiresAt    time.Time
 		shouldDiffer bool
 	}{
-		{"different Kind", "prefix", base.Value, base.ExpiresAt, true},
-		{"different Value", base.Kind, "echo world", base.ExpiresAt, true},
-		{"different ExpiresAt", base.Kind, base.Value, time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC), true},
-		{"same inputs", base.Kind, base.Value, base.ExpiresAt, false},
+		{"different Action", "ask", base.Kind, base.Value, base.ExpiresAt, true},
+		{"different Kind", base.Action, "prefix", base.Value, base.ExpiresAt, true},
+		{"different Value", base.Action, base.Kind, "echo world", base.ExpiresAt, true},
+		{"different ExpiresAt", base.Action, base.Kind, base.Value, time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC), true},
+		{"same inputs", base.Action, base.Kind, base.Value, base.ExpiresAt, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mac := computeMAC(secret, tt.kind, tt.value, tt.expiresAt)
+			mac := computeMAC(secret, tt.action, tt.kind, tt.value, tt.expiresAt)
 			if tt.shouldDiffer && mac == baseMac {
 				t.Errorf("MAC should differ for %s", tt.name)
 			}
@@ -598,26 +518,26 @@ func TestComputeMAC_DifferentInputsDifferentMACs(t *testing.T) {
 	}
 }
 
-func TestMatchesAllow_SessionScoped_NoExpiry(t *testing.T) {
+func TestMatches_SessionScoped_NoExpiry(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
 	// Session-scoped entry (zero ExpiresAt) should always match.
-	a.Add(secret, "exact", "session-cmd", "session scoped", time.Time{})
+	a.Add(secret, "allow", "exact", "session-cmd", "session scoped", time.Time{})
 
-	if e := a.MatchesAllow("session-cmd", ""); e == nil {
+	if e := a.Matches("session-cmd", ""); e == nil {
 		t.Error("session-scoped entry (no expiry) should match")
 	}
 }
 
-func TestMatchesAllow_MultipleEntries_FirstMatch(t *testing.T) {
+func TestMatches_MultipleEntries_FirstMatch(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	a.Add(secret, "exact", "cmd-a", "first", time.Time{})
-	a.Add(secret, "exact", "cmd-a", "second", time.Time{})
+	a.Add(secret, "allow", "exact", "cmd-a", "first", time.Time{})
+	a.Add(secret, "allow", "exact", "cmd-a", "second", time.Time{})
 
-	e := a.MatchesAllow("cmd-a", "")
+	e := a.Matches("cmd-a", "")
 	if e == nil {
 		t.Fatal("should match")
 	}
@@ -626,24 +546,24 @@ func TestMatchesAllow_MultipleEntries_FirstMatch(t *testing.T) {
 	}
 }
 
-func TestMatchesAllow_NoMatch(t *testing.T) {
+func TestMatches_NoMatch(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	a.Add(secret, "exact", "specific-cmd", "only this", time.Time{})
+	a.Add(secret, "allow", "exact", "specific-cmd", "only this", time.Time{})
 
-	if e := a.MatchesAllow("other-cmd", ""); e != nil {
+	if e := a.Matches("other-cmd", ""); e != nil {
 		t.Error("should not match unrelated command")
 	}
-	if e := a.MatchesAllow("", "some:rule"); e != nil {
+	if e := a.Matches("", "some:rule"); e != nil {
 		t.Error("exact entry should not match rule IDs")
 	}
 }
 
-func TestMatchesAllow_EmptyAllowlist(t *testing.T) {
+func TestMatches_EmptyAllowlist(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 
-	if e := a.MatchesAllow("any-cmd", "any:rule"); e != nil {
+	if e := a.Matches("any-cmd", "any:rule"); e != nil {
 		t.Error("empty allowlist should not match anything")
 	}
 }
@@ -654,7 +574,7 @@ func TestSave_CreatesDirectories(t *testing.T) {
 
 	a := &Allowlist{Token: "test-token", path: nested}
 	secret := []byte("test-secret-key-32-bytes-long!!")
-	a.Add(secret, "exact", "cmd", "test", time.Time{})
+	a.Add(secret, "allow", "exact", "cmd", "test", time.Time{})
 
 	if err := a.Save(); err != nil {
 		t.Fatalf("Save should create intermediate directories: %v", err)
@@ -672,13 +592,13 @@ func TestSave_AtomicOverwrite(t *testing.T) {
 
 	// Save initial version.
 	a := &Allowlist{Token: "test-token", path: path}
-	a.Add(secret, "exact", "original-cmd", "v1", time.Time{})
+	a.Add(secret, "allow", "exact", "original-cmd", "v1", time.Time{})
 	if err := a.Save(); err != nil {
 		t.Fatalf("Save v1: %v", err)
 	}
 
 	// Save updated version.
-	a.Add(secret, "exact", "new-cmd", "v2", time.Time{})
+	a.Add(secret, "allow", "exact", "new-cmd", "v2", time.Time{})
 	if err := a.Save(); err != nil {
 		t.Fatalf("Save v2: %v", err)
 	}
@@ -702,13 +622,14 @@ func TestMACIntegrity_HMACSHA256(t *testing.T) {
 	secret := []byte("test-secret-key-32-bytes-long!!")
 	entry := Entry{
 		ID:        "sa-test",
+		Action:    "allow",
 		Kind:      "exact",
 		Value:     "test",
 		Reason:    "test",
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
 
-	mac := computeMAC(secret, entry.Kind, entry.Value, entry.ExpiresAt)
+	mac := computeMAC(secret, entry.Action, entry.Kind, entry.Value, entry.ExpiresAt)
 	macBytes, err := hex.DecodeString(mac)
 	if err != nil {
 		t.Fatalf("MAC should be valid hex: %v", err)
@@ -723,12 +644,42 @@ func TestAdd_UniqueIDs(t *testing.T) {
 	a := &Allowlist{Token: "test-token", path: "/dev/null"}
 	secret := []byte("test-secret-key-32-bytes-long!!")
 
-	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
-		e := a.Add(secret, "exact", "cmd", "test", time.Time{})
-		if ids[e.ID] {
-			t.Fatalf("duplicate ID generated: %s", e.ID)
+	originalIDGenerator := idGenerator
+	t.Cleanup(func() {
+		idGenerator = originalIDGenerator
+	})
+
+	ids := []string{"sa-0000000000000001", "sa-0000000000000001", "sa-0000000000000002"}
+	idGenerator = func() string {
+		if len(ids) == 0 {
+			t.Fatal("idGenerator called more than expected")
 		}
-		ids[e.ID] = true
+		id := ids[0]
+		ids = ids[1:]
+		return id
+	}
+
+	first := a.Add(secret, "allow", "exact", "cmd1", "test", time.Time{})
+	second := a.Add(secret, "allow", "exact", "cmd2", "test", time.Time{})
+
+	if first.ID != "sa-0000000000000001" {
+		t.Fatalf("first ID = %q, want sa-0000000000000001", first.ID)
+	}
+	if second.ID != "sa-0000000000000002" {
+		t.Fatalf("second ID = %q, want sa-0000000000000002", second.ID)
+	}
+}
+
+func TestAdd_AskAction(t *testing.T) {
+	a := &Allowlist{Token: "test-token", path: "/dev/null"}
+	secret := []byte("test-secret-key-32-bytes-long!!")
+
+	e := a.Add(secret, "ask", "exact", "git push --force", "ask for force push", time.Time{})
+
+	if e.Action != "ask" {
+		t.Errorf("Action = %q, want ask", e.Action)
+	}
+	if !verifyMAC(secret, e) {
+		t.Error("MAC verification failed for ask entry")
 	}
 }

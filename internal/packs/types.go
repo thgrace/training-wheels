@@ -4,6 +4,8 @@ package packs
 import (
 	"fmt"
 	"strings"
+
+	"github.com/thgrace/training-wheels/internal/ast"
 )
 
 // Severity indicates how dangerous a destructive pattern is.
@@ -98,22 +100,6 @@ type PatternSuggestion struct {
 	Platform    Platform
 }
 
-// SafePattern is a whitelist regex. If matched, the command is allowed.
-type SafePattern struct {
-	Name  string
-	Regex *LazyRegex
-}
-
-// DestructivePattern is a blacklist regex. If matched, the command is denied.
-type DestructivePattern struct {
-	Name        string
-	Regex       *LazyRegex
-	Reason      string
-	Severity    Severity
-	Explanation string
-	Suggestions []PatternSuggestion
-}
-
 // DestructiveMatch is the result of a destructive pattern match.
 type DestructiveMatch struct {
 	Name        string
@@ -123,53 +109,50 @@ type DestructiveMatch struct {
 	Suggestions []PatternSuggestion
 	MatchStart  int
 	MatchEnd    int
+	Action      string // "deny" (default) or "ask"; empty means "deny"
 }
 
-// Pack is a named collection of safe and destructive patterns.
+// Pack is a named collection of structural patterns.
 type Pack struct {
-	ID                  string
-	Name                string
-	Description         string
-	Keywords            []string
-	SafePatterns        []SafePattern
-	DestructivePatterns []DestructivePattern
+	ID                 string
+	Name               string
+	Description        string
+	Keywords           []string
+	StructuralPatterns []StructuralPattern // v2: when/unless structural patterns
 }
 
-// MatchesSafe returns true if any safe pattern matches the command.
-func (p *Pack) MatchesSafe(cmd string) bool {
-	for i := range p.SafePatterns {
-		if p.SafePatterns[i].Regex.IsMatch(cmd) {
-			return true
-		}
-	}
-	return false
-}
-
-// MatchesDestructive returns the first destructive pattern match, or nil.
-func (p *Pack) MatchesDestructive(cmd string) *DestructiveMatch {
-	for i := range p.DestructivePatterns {
-		dp := &p.DestructivePatterns[i]
-		start, end, ok := dp.Regex.FindIndex(cmd)
-		if ok {
-			return &DestructiveMatch{
-				Name:        dp.Name,
-				Reason:      dp.Reason,
-				Severity:    dp.Severity,
-				Explanation: dp.Explanation,
-				Suggestions: dp.Suggestions,
-				MatchStart:  start,
-				MatchEnd:    end,
+// CheckStructural evaluates pre-parsed SimpleCommands against v2 structural patterns.
+func (p *Pack) CheckStructural(cmds []ast.SimpleCommand) *DestructiveMatch {
+	for _, sc := range cmds {
+		for i := range p.StructuralPatterns {
+			sp := &p.StructuralPatterns[i]
+			if sp.MatchCommand(sc) {
+				return &DestructiveMatch{
+					Name:        sp.Name,
+					Reason:      sp.Reason,
+					Severity:    sp.Severity,
+					Explanation: sp.Explanation,
+					Suggestions: sp.Suggestions,
+					Action:      sp.Action,
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// Check runs safe patterns then destructive patterns.
-// Returns nil if the command is safe or doesn't match any pattern.
+// Check parses the command through the AST and evaluates structural patterns.
+// Returns nil if the command doesn't match any pattern.
 func (p *Pack) Check(cmd string) *DestructiveMatch {
-	if p.MatchesSafe(cmd) {
+	if len(p.StructuralPatterns) == 0 {
 		return nil
 	}
-	return p.MatchesDestructive(cmd)
+	cc := ast.Parse([]byte(cmd))
+	if cc == nil {
+		return nil
+	}
+	cc = ast.Unwrap(cc, ast.ShellBash)
+	cmds := cc.AllCommands()
+	ast.EnrichCommands(cmds)
+	return p.CheckStructural(cmds)
 }

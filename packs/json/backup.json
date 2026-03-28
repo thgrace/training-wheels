@@ -8,68 +8,128 @@
       "keywords": [
         "borg"
       ],
-      "safe_patterns": [
-        {
-          "name": "borg-list",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+list\\b"
-        },
-        {
-          "name": "borg-info",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+info\\b"
-        },
-        {
-          "name": "borg-diff",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+diff\\b"
-        },
-        {
-          "name": "borg-check",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+check\\b"
-        },
-        {
-          "name": "borg-create",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+create\\b"
-        },
-        {
-          "name": "borg-extract",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+extract\\b"
-        },
-        {
-          "name": "borg-mount",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+mount\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "borg-delete",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete\\b",
+          "when": {
+            "command": [
+              "borg"
+            ],
+            "subcommand": [
+              "delete"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "list",
+              "info",
+              "diff",
+              "check",
+              "create",
+              "extract",
+              "mount"
+            ]
+          },
           "reason": "borg delete removes archives or entire repositories.",
           "severity": "critical",
           "explanation": "Deleting borg archives or repositories permanently removes backup data. Without the archive, you cannot restore files to that point in time. If you delete the entire repository, all backup history is lost and cannot be recovered.\n\nSafer alternatives:\n- borg list: Review archives before deletion\n- borg info: Check archive details and size\n- borg export-tar: Export archive contents before deletion\n- Use --dry-run to preview what would be deleted"
         },
         {
           "name": "borg-prune",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+prune\\b",
+          "when": {
+            "command": [
+              "borg"
+            ],
+            "subcommand": [
+              "prune"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "list",
+              "info",
+              "diff",
+              "check",
+              "create",
+              "extract",
+              "mount"
+            ]
+          },
           "reason": "borg prune removes archives based on retention rules.",
           "severity": "high",
           "explanation": "Pruning removes archives that don't match retention rules. Misconfigured retention policies can delete more archives than intended. Once pruned, those backup points cannot be restored. Space is not reclaimed until borg compact is run.\n\nSafer alternatives:\n- borg prune --dry-run: Preview which archives would be removed\n- borg list: Review current archives before pruning\n- Double-check retention flags (--keep-daily, --keep-weekly, etc.)"
         },
         {
           "name": "borg-compact",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+compact\\b",
+          "when": {
+            "command": [
+              "borg"
+            ],
+            "subcommand": [
+              "compact"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "list",
+              "info",
+              "diff",
+              "check",
+              "create",
+              "extract",
+              "mount"
+            ]
+          },
           "reason": "borg compact reclaims space after deletions.",
           "severity": "medium",
           "explanation": "Compacting permanently removes data segments that are no longer referenced after delete or prune operations. Before compacting, deleted data could theoretically be recovered. After compacting, the data is permanently gone and disk space is reclaimed.\n\nSafer alternatives:\n- borg list: Verify intended archives still exist\n- borg check: Verify repository integrity before compacting\n- Ensure all pruning was intentional before compacting"
         },
         {
           "name": "borg-recreate",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+recreate\\b",
+          "when": {
+            "command": [
+              "borg"
+            ],
+            "subcommand": [
+              "recreate"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "list",
+              "info",
+              "diff",
+              "check",
+              "create",
+              "extract",
+              "mount"
+            ]
+          },
           "reason": "borg recreate can drop data from archives.",
           "severity": "high",
           "explanation": "Recreate modifies existing archives by recompressing or excluding files. Using --exclude or --exclude-from can permanently remove files from the archive. The original archive state cannot be recovered after recreation completes.\n\nSafer alternatives:\n- borg recreate --dry-run: Preview changes without applying\n- borg create: Create a new archive instead of modifying existing\n- borg export-tar: Export archive before recreation for backup"
         },
         {
           "name": "borg-break-lock",
-          "regex": "borg(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+break-lock\\b",
+          "when": {
+            "command": [
+              "borg"
+            ],
+            "subcommand": [
+              "break-lock"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "list",
+              "info",
+              "diff",
+              "check",
+              "create",
+              "extract",
+              "mount"
+            ]
+          },
           "reason": "borg break-lock forces removal of repository locks.",
           "severity": "medium",
           "explanation": "Breaking locks removes lock files that protect against concurrent access. If another borg process is actually running (not a stale lock), breaking the lock can cause repository corruption. Only use when certain no other operation is in progress.\n\nSafer alternatives:\n- Check for running borg processes (ps aux | grep borg)\n- Wait for existing operations to complete\n- Verify lock is stale (check lock file timestamp)"
@@ -83,86 +143,199 @@
       "keywords": [
         "rclone"
       ],
-      "safe_patterns": [
-        {
-          "name": "rclone-copy",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+copy\\b"
-        },
-        {
-          "name": "rclone-ls",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+ls\\b"
-        },
-        {
-          "name": "rclone-lsd",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+lsd\\b"
-        },
-        {
-          "name": "rclone-lsl",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+lsl\\b"
-        },
-        {
-          "name": "rclone-size",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+size\\b"
-        },
-        {
-          "name": "rclone-check",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+check\\b"
-        },
-        {
-          "name": "rclone-config",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+config\\b"
-        },
-        {
-          "name": "rclone-dry-run",
-          "regex": "rclone\\b(?:\\s+\\S+)*\\s+--dry-run\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "rclone-sync",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+sync\\b",
+          "when": {
+            "command": [
+              "rclone"
+            ],
+            "subcommand": [
+              "sync"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "copy",
+              "ls",
+              "lsd",
+              "lsl",
+              "size",
+              "check",
+              "config"
+            ],
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "rclone sync deletes destination files not present in the source.",
           "severity": "critical",
           "explanation": "rclone sync makes destination match source exactly:\n\n- Files in destination not in source are DELETED\n- This is a one-way sync (source -> destination)\n- Use --dry-run to preview changes first\n- Consider 'rclone copy' for non-destructive transfer\n\nPreview: rclone sync source: dest: --dry-run"
         },
         {
           "name": "rclone-delete",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+delete\\b",
+          "when": {
+            "command": [
+              "rclone"
+            ],
+            "subcommand": [
+              "delete"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "copy",
+              "ls",
+              "lsd",
+              "lsl",
+              "size",
+              "check",
+              "config"
+            ],
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "rclone delete removes files and directories from the target.",
           "severity": "critical",
           "explanation": "rclone delete removes files from remote:\n\n- Deletes files matching the path/filter\n- Does not delete directories (use purge for that)\n- Use --dry-run to preview deletions\n- Filters (--include/--exclude) affect what's deleted\n\nPreview: rclone delete remote:path --dry-run"
         },
         {
           "name": "rclone-deletefile",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+deletefile\\b",
+          "when": {
+            "command": [
+              "rclone"
+            ],
+            "subcommand": [
+              "deletefile"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "copy",
+              "ls",
+              "lsd",
+              "lsl",
+              "size",
+              "check",
+              "config"
+            ],
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "rclone deletefile removes a single file from the target.",
           "severity": "high",
           "explanation": "rclone deletefile removes a single file:\n\n- Deletes exactly one specified file\n- More targeted than 'rclone delete'\n- Cannot be undone without backup\n\nLower risk than bulk delete but still permanent"
         },
         {
           "name": "rclone-purge",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+purge\\b",
+          "when": {
+            "command": [
+              "rclone"
+            ],
+            "subcommand": [
+              "purge"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "copy",
+              "ls",
+              "lsd",
+              "lsl",
+              "size",
+              "check",
+              "config"
+            ],
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "rclone purge deletes a path and all its contents.",
           "severity": "critical",
           "explanation": "rclone purge removes directory and ALL contents:\n\n- Deletes the specified path completely\n- Removes all files AND subdirectories\n- More destructive than 'rclone delete'\n- Cannot be undone without backup\n\nList contents first: rclone ls remote:path"
         },
         {
           "name": "rclone-cleanup",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+cleanup\\b",
+          "when": {
+            "command": [
+              "rclone"
+            ],
+            "subcommand": [
+              "cleanup"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "copy",
+              "ls",
+              "lsd",
+              "lsl",
+              "size",
+              "check",
+              "config"
+            ],
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "rclone cleanup removes old/malformed uploads.",
           "severity": "medium",
           "explanation": "rclone cleanup removes incomplete uploads:\n\n- Removes old/incomplete multipart uploads\n- Cleans up failed transfer artifacts\n- May interrupt in-progress uploads\n\nGenerally safe but check for active uploads first"
         },
         {
           "name": "rclone-dedupe",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+dedupe\\b",
+          "when": {
+            "command": [
+              "rclone"
+            ],
+            "subcommand": [
+              "dedupe"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "copy",
+              "ls",
+              "lsd",
+              "lsl",
+              "size",
+              "check",
+              "config"
+            ],
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "rclone dedupe can delete or rename duplicate files.",
           "severity": "high",
           "explanation": "rclone dedupe handles duplicate files:\n\n- Can delete duplicates (--dedupe-mode oldest/newest)\n- Can rename duplicates to unique names\n- Interactive mode lets you choose per-file\n- Use --dry-run to preview actions\n\nPreview: rclone dedupe remote:path --dry-run"
         },
         {
           "name": "rclone-move",
-          "regex": "rclone(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+move\\b",
+          "when": {
+            "command": [
+              "rclone"
+            ],
+            "subcommand": [
+              "move"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "copy",
+              "ls",
+              "lsd",
+              "lsl",
+              "size",
+              "check",
+              "config"
+            ],
+            "flag": [
+              "--dry-run"
+            ]
+          },
           "reason": "rclone move deletes source files after copying.",
           "severity": "high",
           "explanation": "rclone move transfers and deletes source:\n\n- Copies files to destination\n- Deletes source files after successful copy\n- Use --dry-run to preview the operation\n- Consider 'rclone copy' to preserve source\n\nPreview: rclone move source: dest: --dry-run"
@@ -176,72 +349,142 @@
       "keywords": [
         "restic"
       ],
-      "safe_patterns": [
-        {
-          "name": "restic-snapshots",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+snapshots\\b"
-        },
-        {
-          "name": "restic-ls",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+ls\\b"
-        },
-        {
-          "name": "restic-stats",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+stats\\b"
-        },
-        {
-          "name": "restic-check",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+check\\b"
-        },
-        {
-          "name": "restic-diff",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+diff\\b"
-        },
-        {
-          "name": "restic-find",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+find\\b"
-        },
-        {
-          "name": "restic-backup",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+backup\\b"
-        },
-        {
-          "name": "restic-restore",
-          "regex": "restic(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+restore\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "restic-forget",
-          "regex": "restic\\b.*\\sforget\\b",
+          "when": {
+            "command": [
+              "restic"
+            ],
+            "subcommand": [
+              "forget"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "snapshots",
+              "ls",
+              "stats",
+              "check",
+              "diff",
+              "find",
+              "backup",
+              "restore"
+            ]
+          },
           "reason": "restic forget removes snapshots and can permanently delete backup data.",
           "severity": "critical",
           "explanation": "restic forget removes snapshots from repository:\n\n- Snapshot metadata removed from repository\n- Data not deleted until prune is run\n- Use --keep-* flags to retain recent snapshots\n- --dry-run shows what would be forgotten\n\nPreview first: restic forget --dry-run [options]"
         },
         {
           "name": "restic-prune",
-          "regex": "restic\\b.*\\sprune\\b",
+          "when": {
+            "command": [
+              "restic"
+            ],
+            "subcommand": [
+              "prune"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "snapshots",
+              "ls",
+              "stats",
+              "check",
+              "diff",
+              "find",
+              "backup",
+              "restore"
+            ]
+          },
           "reason": "restic prune removes unreferenced data and is irreversible.",
           "severity": "critical",
           "explanation": "restic prune permanently deletes unreferenced data:\n\n- Removes data no longer referenced by snapshots\n- Usually run after 'restic forget'\n- Cannot be undone - data is permanently deleted\n- May take a long time for large repositories\n\nConsider: restic forget --prune to combine operations"
         },
         {
           "name": "restic-key-remove",
-          "regex": "restic\\b.*\\skey\\b.*\\sremove\\b",
+          "when": {
+            "command": [
+              "restic"
+            ],
+            "subcommand": [
+              "key"
+            ],
+            "arg_contains": [
+              "remove"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "snapshots",
+              "ls",
+              "stats",
+              "check",
+              "diff",
+              "find",
+              "backup",
+              "restore"
+            ]
+          },
           "reason": "restic key remove deletes encryption keys and can make backups unrecoverable.",
           "severity": "critical",
           "explanation": "restic key remove deletes repository encryption keys:\n\n- Key is permanently deleted from repository\n- If all keys removed, repository becomes inaccessible\n- Cannot recover data without a valid key\n- Always keep at least one key available\n\nList keys first: restic key list"
         },
         {
           "name": "restic-unlock-remove-all",
-          "regex": "restic\\b.*\\sunlock\\b.*\\s--remove-all\\b",
+          "when": {
+            "command": [
+              "restic"
+            ],
+            "subcommand": [
+              "unlock"
+            ],
+            "flag": [
+              "--remove-all"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "snapshots",
+              "ls",
+              "stats",
+              "check",
+              "diff",
+              "find",
+              "backup",
+              "restore"
+            ]
+          },
           "reason": "restic unlock --remove-all force-removes repository locks.",
           "severity": "high",
           "explanation": "restic unlock --remove-all force-removes all locks:\n\n- Removes locks from potentially active operations\n- May cause corruption if operations are in progress\n- Use only when locks are stale/orphaned\n\nCheck first: ensure no other restic processes are running"
         },
         {
           "name": "restic-cache-cleanup",
-          "regex": "restic\\b.*\\scache\\b.*\\s--cleanup\\b",
+          "when": {
+            "command": [
+              "restic"
+            ],
+            "subcommand": [
+              "cache"
+            ],
+            "flag": [
+              "--cleanup"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "snapshots",
+              "ls",
+              "stats",
+              "check",
+              "diff",
+              "find",
+              "backup",
+              "restore"
+            ]
+          },
           "reason": "restic cache --cleanup removes cached data from disk.",
           "severity": "low",
           "explanation": "restic cache --cleanup removes local cache:\n\n- Deletes cached data from local disk\n- Does not affect repository data\n- Cache will be rebuilt on next operation\n- May slow down subsequent operations\n\nLower risk: only affects local cache, not backups"
@@ -255,75 +498,111 @@
       "keywords": [
         "velero"
       ],
-      "safe_patterns": [
-        {
-          "name": "velero-backup-get",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+backup\\s+get\\b"
-        },
-        {
-          "name": "velero-backup-describe",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+backup\\s+describe\\b"
-        },
-        {
-          "name": "velero-backup-logs",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+backup\\s+logs\\b"
-        },
-        {
-          "name": "velero-backup-create",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+backup\\s+create\\b"
-        },
-        {
-          "name": "velero-schedule-get",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+schedule\\s+get\\b"
-        },
-        {
-          "name": "velero-restore-create",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+restore\\s+create\\b"
-        },
-        {
-          "name": "velero-version",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+version\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "velero-backup-delete",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+backup\\s+delete\\b",
+          "when": {
+            "command": [
+              "velero"
+            ],
+            "subcommand": [
+              "backup",
+              "delete"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "get",
+              "describe",
+              "logs",
+              "create"
+            ]
+          },
           "reason": "velero backup delete removes a backup and its data.",
           "severity": "high",
           "explanation": "Deleting a Velero backup removes both the backup metadata in Kubernetes and the actual backup data from object storage. Once deleted, you cannot restore your cluster or applications to that backup point. This is irreversible.\n\nSafer alternatives:\n- velero backup describe: Review backup contents before deletion\n- velero backup get: List all backups to verify target\n- Consider retaining backups with TTL policies instead of manual deletion"
         },
         {
           "name": "velero-schedule-delete",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+schedule\\s+delete\\b",
+          "when": {
+            "command": [
+              "velero"
+            ],
+            "subcommand": [
+              "schedule",
+              "delete"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "get",
+              "describe"
+            ]
+          },
           "reason": "velero schedule delete removes scheduled backups.",
           "severity": "medium",
           "explanation": "Deleting a backup schedule stops automatic backup creation. Existing backups created by the schedule are not affected, but no new backups will be created. If forgotten, this can lead to outdated backups and recovery gaps.\n\nSafer alternatives:\n- velero schedule get: Review all schedules first\n- velero schedule describe: Check schedule configuration\n- Pause the schedule instead if temporary"
         },
         {
           "name": "velero-restore-delete",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+restore\\s+delete\\b",
+          "when": {
+            "command": [
+              "velero"
+            ],
+            "subcommand": [
+              "restore",
+              "delete"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "create"
+            ]
+          },
           "reason": "velero restore delete removes restore records.",
           "severity": "low",
           "explanation": "Deleting restore records removes the metadata about past restore operations from Kubernetes. This does not affect the restored resources themselves or the original backups. However, audit trails of restore operations will be lost.\n\nSafer alternatives:\n- velero restore get: List restores before deletion\n- Document restore history externally if needed for compliance"
         },
         {
           "name": "velero-backup-location-delete",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+backup-location\\s+delete\\b",
+          "when": {
+            "command": [
+              "velero"
+            ],
+            "subcommand": [
+              "backup-location",
+              "delete"
+            ]
+          },
           "reason": "velero backup-location delete removes a backup storage location.",
           "severity": "high",
           "explanation": "Removing a backup storage location disconnects Velero from that storage backend. Backups stored there become inaccessible to Velero (though data remains in storage). You won't be able to restore from those backups until the location is recreated.\n\nSafer alternatives:\n- velero backup-location get: Review all locations\n- Verify no critical backups depend on this location\n- Migrate backups to another location before deletion"
         },
         {
           "name": "velero-snapshot-location-delete",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+snapshot-location\\s+delete\\b",
+          "when": {
+            "command": [
+              "velero"
+            ],
+            "subcommand": [
+              "snapshot-location",
+              "delete"
+            ]
+          },
           "reason": "velero snapshot-location delete removes a snapshot location.",
           "severity": "high",
           "explanation": "Deleting a snapshot location removes the configuration for volume snapshots. Existing snapshots may become orphaned and inaccessible through Velero. Volume restores that depend on this location will fail.\n\nSafer alternatives:\n- velero snapshot-location get: Review all snapshot locations\n- Verify no backups use this snapshot location\n- Migrate to a new snapshot location before deletion"
         },
         {
           "name": "velero-uninstall",
-          "regex": "velero(?:\\s+--?\\S+(?:\\s+\\S+)?)*\\s+uninstall\\b",
+          "when": {
+            "command": [
+              "velero"
+            ],
+            "subcommand": [
+              "uninstall"
+            ]
+          },
           "reason": "velero uninstall removes the Velero deployment and related resources.",
           "severity": "critical",
           "explanation": "Uninstalling Velero removes the deployment, CRDs, and all Velero-managed resources from your cluster. Backup schedules stop immediately. While backup data in object storage is preserved, you cannot restore from backups until Velero is reinstalled and reconfigured.\n\nSafer alternatives:\n- Document current configuration before uninstalling\n- velero backup-location get: Record storage locations\n- velero schedule get: Record all schedules\n- Export Velero resources: kubectl get -o yaml"

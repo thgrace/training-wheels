@@ -14,7 +14,10 @@ Older snapshots and untagged historical commits are not supported.
 
 Do not open public GitHub issues for suspected vulnerabilities.
 
-Report vulnerabilities privately by using GitHub private vulnerability reporting. Be sure to provide:
+Report vulnerabilities privately via
+[GitHub private vulnerability reporting](https://github.com/thgrace/training-wheels/security/advisories/new).
+
+Please provide:
 
 - a clear description of the issue
 - steps to reproduce or a proof of concept

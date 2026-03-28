@@ -10,29 +10,29 @@ import (
 // TraceCollector defines the interface for recording evaluation steps.
 type TraceCollector interface {
 	RecordPreNormalize(input, output string)
-	RecordOverrideCheck(scope string, entry *override.Entry, allowed bool)
+	RecordOverrideCheck(scope string, entry *override.Entry)
 	RecordSessionAllowCheck(scope string, entry *session.Entry, allowed bool)
 	RecordQuickReject(input string, candidatePackIDs []string)
 	RecordSanitization(input, output string)
 	RecordNormalization(input, output string)
 	RecordPackEvaluation(packID string, skipped bool, safeMatched bool, destructiveMatch *PatternMatch)
 	RecordFinalDecision(decision EvaluationDecision, duration time.Duration)
-	
+
 	// GetTrace returns the accumulated trace.
 	GetTrace() *EvaluationTrace
 }
 
 // EvaluationTrace holds the full history of a single evaluation.
 type EvaluationTrace struct {
-	Input             string               `json:"input"`
-	PreNormalized     string               `json:"pre_normalized"`
-	Sanitized         string               `json:"sanitized"`
-	Normalized        string               `json:"normalized"`
-	QuickRejectPacks  []string             `json:"quick_reject_packs"`
-	Steps             []TraceStep          `json:"steps"`
-	PackDetails       []PackTraceDetail    `json:"pack_details"`
-	FinalDecision     string               `json:"final_decision"`
-	TotalDurationNs   int64                `json:"total_duration_ns"`
+	Input            string            `json:"input"`
+	PreNormalized    string            `json:"pre_normalized"`
+	Sanitized        string            `json:"sanitized"`
+	Normalized       string            `json:"normalized"`
+	QuickRejectPacks []string          `json:"quick_reject_packs"`
+	Steps            []TraceStep       `json:"steps"`
+	PackDetails      []PackTraceDetail `json:"pack_details"`
+	FinalDecision    string            `json:"final_decision"`
+	TotalDurationNs  int64             `json:"total_duration_ns"`
 }
 
 // TraceStep records a high-level event in the evaluation.
@@ -78,16 +78,12 @@ func (c *BufferedTraceCollector) RecordPreNormalize(input, output string) {
 	c.addStep("Pre-normalization complete", map[string]string{"output": output})
 }
 
-func (c *BufferedTraceCollector) RecordOverrideCheck(scope string, entry *override.Entry, allowed bool) {
+func (c *BufferedTraceCollector) RecordOverrideCheck(scope string, entry *override.Entry) {
 	msg := "Override check: " + scope
 	if entry != nil {
-		action := "deny"
-		if allowed {
-			action = "allow"
-		}
 		c.addStep(msg, map[string]any{
 			"match":  true,
-			"action": action,
+			"action": entry.Action,
 			"id":     entry.ID,
 			"value":  entry.Value,
 		})
@@ -133,13 +129,16 @@ func (c *BufferedTraceCollector) RecordNormalization(input, output string) {
 }
 
 func (c *BufferedTraceCollector) RecordPackEvaluation(packID string, skipped bool, safeMatched bool, destructiveMatch *PatternMatch) {
-	status := "scanned"
-	if skipped {
+	var status string
+	switch {
+	case skipped:
 		status = "skipped (no keyword match)"
-	} else if safeMatched {
+	case safeMatched:
 		status = "safe match"
-	} else if destructiveMatch != nil {
+	case destructiveMatch != nil:
 		status = "destructive match"
+	default:
+		status = "scanned"
 	}
 
 	c.trace.PackDetails = append(c.trace.PackDetails, PackTraceDetail{

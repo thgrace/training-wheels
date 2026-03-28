@@ -9,20 +9,23 @@
         "huggingface-cli",
         "delete-cache"
       ],
-      "safe_patterns": [
-        {
-          "name": "hf-whoami",
-          "regex": "(?i)huggingface-cli\\s+whoami\\b"
-        },
-        {
-          "name": "hf-scan-cache",
-          "regex": "(?i)huggingface-cli\\s+scan-cache\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "hf-delete-cache",
-          "regex": "(?i)huggingface-cli\\s+delete-cache\\b",
+          "when": {
+            "command": [
+              "huggingface-cli"
+            ],
+            "subcommand": [
+              "delete-cache"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "whoami",
+              "scan-cache"
+            ]
+          },
           "reason": "huggingface-cli delete-cache removes downloaded models and datasets.",
           "severity": "high",
           "explanation": "Deleting the cache removes local copies of models and datasets. This requires re-downloading them (often multi-GB files), which costs time and bandwidth.\n\nScan first to see what's in the cache:\n  huggingface-cli scan-cache"
@@ -38,27 +41,50 @@
         "sweep",
         "artifact"
       ],
-      "safe_patterns": [
-        {
-          "name": "wandb-status",
-          "regex": "(?i)wandb\\s+status\\b"
-        },
-        {
-          "name": "wandb-login",
-          "regex": "(?i)wandb\\s+login\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "wandb-sweep-stop",
-          "regex": "(?i)wandb\\s+sweep\\s+(?:--)?stop\\b",
+          "when": {
+            "command": [
+              "wandb"
+            ],
+            "subcommand": [
+              "sweep"
+            ],
+            "arg_contains": [
+              "stop",
+              "--stop"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "status",
+              "login"
+            ]
+          },
           "reason": "wandb sweep --stop immediately terminates an active sweep.",
           "severity": "high",
           "explanation": "Stopping a sweep immediately halts all active agents associated with it. This can waste significant compute time and partial results may not be saved correctly."
         },
         {
           "name": "wandb-artifact-rm",
-          "regex": "(?i)wandb\\s+artifact\\s+rm\\b",
+          "when": {
+            "command": [
+              "wandb"
+            ],
+            "subcommand": [
+              "artifact"
+            ],
+            "arg_contains": [
+              "rm"
+            ]
+          },
+          "unless": {
+            "subcommand": [
+              "status",
+              "login"
+            ]
+          },
           "reason": "wandb artifact rm removes a tracked artifact permanently.",
           "severity": "high",
           "explanation": "Removing an artifact deletes the reference to the data. If this artifact is used in other experiments or reports, they will break.\n\nList artifacts first:\n  wandb artifact ls"

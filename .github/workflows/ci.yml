@@ -22,6 +22,17 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Verify module checksums
+        run: go mod verify
+
+      - name: Govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
+        with:
+          version: v2
+
       - name: Test
         run: go test ./...
 
@@ -33,3 +44,76 @@ jobs:
         with:
           name: bench-results
           path: bench-results.txt
+
+  policy-test:
+    runs-on: ubuntu-latest
+    env:
+      TW_PACKS_ENABLED: core,database,cloud,containers,kubernetes,infrastructure,system,remote,secrets,package_managers,platform,cicd,search,interpreters,dns,email,messaging,monitoring,storage,payment,cdn,apigateway,backup,featureflags,loadbalancer,ai,strict_git,windows
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build tw
+        env:
+          GOWORK: off
+          GOCACHE: ${{ github.workspace }}/.tmp/go-build-cache
+        run: |
+          mkdir -p "$GOCACHE" "$GITHUB_WORKSPACE/.tmp/bin"
+          go build -o "$GITHUB_WORKSPACE/.tmp/bin/tw" ./cmd/tw/
+
+      - name: Run Policy E2E Tests
+        env:
+          HOME: ${{ github.workspace }}/.tmp/home
+          TW_FAILURE_REPORT: /tmp/tw-policy-failures.txt
+        run: |
+          mkdir -p "$HOME"
+          PATH="$GITHUB_WORKSPACE/.tmp/bin:$PATH" \
+            .github/scripts/run-destructive-tests.sh .github/scripts/tests/test-policy-regression.sh
+
+      - name: Upload policy failure report on failure
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: policy-failure-report
+          path: /tmp/tw-policy-failures.txt
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    env:
+      TW_PACKS_ENABLED: core,database,cloud,containers,kubernetes,infrastructure,system,remote,secrets,package_managers,platform,cicd,search,interpreters,dns,email,messaging,monitoring,storage,payment,cdn,apigateway,backup,featureflags,loadbalancer,ai,strict_git,windows
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build tw
+        env:
+          GOWORK: off
+          GOCACHE: ${{ github.workspace }}/.tmp/go-build-cache
+        run: |
+          mkdir -p "$GOCACHE" "$GITHUB_WORKSPACE/.tmp/bin"
+          go build -o "$GITHUB_WORKSPACE/.tmp/bin/tw" ./cmd/tw/
+
+      - name: Run Smoke Tests
+        env:
+          HOME: ${{ github.workspace }}/.tmp/home
+          TW_FAILURE_REPORT: /tmp/tw-smoke-failures.txt
+        run: |
+          mkdir -p "$HOME"
+          PATH="$GITHUB_WORKSPACE/.tmp/bin:$PATH" \
+            .github/scripts/run-destructive-tests.sh \
+              .github/scripts/tests/test-core.sh \
+              .github/scripts/tests/test-context.sh \
+              .github/scripts/tests/test-bypass.sh
+
+      - name: Upload smoke failure report on failure
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: smoke-failure-report
+          path: /tmp/tw-smoke-failures.txt

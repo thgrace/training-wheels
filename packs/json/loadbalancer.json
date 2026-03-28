@@ -9,80 +9,121 @@
         "haproxy",
         "socat"
       ],
-      "safe_patterns": [
-        {
-          "name": "haproxy-config-check",
-          "regex": "\\bhaproxy\\s+-c\\b"
-        },
-        {
-          "name": "haproxy-version",
-          "regex": "\\bhaproxy\\s+-v+\\b"
-        },
-        {
-          "name": "systemctl-status-haproxy",
-          "regex": "systemctl\\s+status\\s+haproxy(?:\\.service)?\\b"
-        },
-        {
-          "name": "service-status-haproxy",
-          "regex": "service\\s+haproxy\\s+status\\b"
-        },
-        {
-          "name": "haproxy-socat-show",
-          "regex": "(?:echo|printf)\\s+['\"]?show\\s+(?:stat|info|servers|backend|pools|sess|errors|table)['\"]?\\s*\\|\\s*socat\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "haproxy-soft-stop",
-          "regex": "\\bhaproxy\\s+.*-sf\\b",
+          "when": {
+            "command": [
+              "haproxy"
+            ]
+          },
           "reason": "haproxy -sf sends a soft stop signal, terminating the load balancer gracefully.",
           "severity": "high"
         },
         {
           "name": "haproxy-hard-stop",
-          "regex": "\\bhaproxy\\s+.*-st\\b",
+          "when": {
+            "command": [
+              "haproxy"
+            ]
+          },
           "reason": "haproxy -st sends a hard stop signal, immediately terminating the load balancer.",
           "severity": "high"
         },
         {
           "name": "haproxy-systemctl-stop",
-          "regex": "systemctl\\s+stop\\s+haproxy(?:\\.service)?\\b",
+          "when": {
+            "command": [
+              "systemctl"
+            ],
+            "subcommand": [
+              "stop",
+              "haproxy"
+            ]
+          },
           "reason": "systemctl stop haproxy stops the HAProxy service.",
           "severity": "high"
         },
         {
           "name": "haproxy-service-stop",
-          "regex": "service\\s+haproxy\\s+stop\\b",
+          "when": {
+            "command": [
+              "service"
+            ],
+            "subcommand": [
+              "haproxy",
+              "stop"
+            ]
+          },
           "reason": "service haproxy stop stops the HAProxy service.",
           "severity": "high"
         },
         {
           "name": "haproxy-socat-disable-server",
-          "regex": "(?:echo|printf)\\s+['\"]?disable\\s+server\\b.*\\|\\s*socat\\b",
+          "when": {
+            "command": [
+              "socat"
+            ],
+            "arg_contains": [
+              "disable",
+              "server"
+            ]
+          },
           "reason": "Disabling a server via HAProxy runtime API removes it from the load balancer pool.",
           "severity": "high"
         },
         {
           "name": "haproxy-socat-shutdown-sessions",
-          "regex": "(?:echo|printf)\\s+['\"]?shutdown\\s+sessions\\b.*\\|\\s*socat\\b",
+          "when": {
+            "command": [
+              "socat"
+            ],
+            "arg_contains": [
+              "shutdown",
+              "sessions"
+            ]
+          },
           "reason": "Shutting down sessions via HAProxy runtime API terminates active connections.",
           "severity": "high"
         },
         {
           "name": "haproxy-socat-disable-frontend",
-          "regex": "(?:echo|printf)\\s+['\"]?disable\\s+frontend\\b.*\\|\\s*socat\\b",
+          "when": {
+            "command": [
+              "socat"
+            ],
+            "arg_contains": [
+              "disable",
+              "frontend"
+            ]
+          },
           "reason": "Disabling a frontend via HAProxy runtime API stops accepting new connections.",
           "severity": "high"
         },
         {
           "name": "haproxy-socat-shutdown-frontend",
-          "regex": "(?:echo|printf)\\s+['\"]?shutdown\\s+frontend\\b.*\\|\\s*socat\\b",
+          "when": {
+            "command": [
+              "socat"
+            ],
+            "arg_contains": [
+              "shutdown",
+              "frontend"
+            ]
+          },
           "reason": "Shutting down a frontend via HAProxy runtime API terminates it immediately.",
           "severity": "high"
         },
         {
           "name": "haproxy-config-delete",
-          "regex": "\\brm\\b.*\\s+/etc/haproxy(?:/|\\b)",
+          "when": {
+            "command": [
+              "rm"
+            ],
+            "arg_contains": [
+              "/etc/haproxy"
+            ]
+          },
           "reason": "Removing files from /etc/haproxy deletes HAProxy configuration.",
           "severity": "high"
         }
@@ -96,68 +137,75 @@
         "nginx",
         "/etc/nginx"
       ],
-      "safe_patterns": [
-        {
-          "name": "nginx-config-test",
-          "regex": "nginx\\s+-t\\b"
-        },
-        {
-          "name": "nginx-config-dump",
-          "regex": "nginx\\s+-T\\b"
-        },
-        {
-          "name": "nginx-version",
-          "regex": "nginx\\s+-v\\b"
-        },
-        {
-          "name": "nginx-version-full",
-          "regex": "nginx\\s+-V\\b"
-        },
-        {
-          "name": "nginx-reload",
-          "regex": "nginx\\s+-s\\s+reload\\b"
-        },
-        {
-          "name": "systemctl-status-nginx",
-          "regex": "systemctl\\s+status\\s+nginx(?:\\.service)?\\b"
-        },
-        {
-          "name": "service-status-nginx",
-          "regex": "service\\s+nginx\\s+status\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "nginx-stop",
-          "regex": "nginx\\s+-s\\s+stop\\b",
+          "when": {
+            "command": [
+              "nginx"
+            ],
+            "subcommand": [
+              "stop"
+            ]
+          },
           "reason": "nginx -s stop shuts down nginx and stops the load balancer.",
           "severity": "high",
           "explanation": "Sending the stop signal terminates nginx immediately without waiting for active connections to finish. All in-flight requests are dropped and upstream traffic stops being routed.\n\nTo reload config without downtime:\n  nginx -s reload\n\nTo gracefully finish current requests:\n  nginx -s quit"
         },
         {
           "name": "nginx-quit",
-          "regex": "nginx\\s+-s\\s+quit\\b",
+          "when": {
+            "command": [
+              "nginx"
+            ],
+            "subcommand": [
+              "quit"
+            ]
+          },
           "reason": "nginx -s quit gracefully stops nginx and halts traffic handling.",
           "severity": "high",
           "explanation": "The quit signal waits for active connections to complete before shutting down nginx. While graceful, it still permanently stops the load balancer and no new connections are accepted once issued.\n\nTo reload config without stopping:\n  nginx -s reload\n\nTest config before changes:\n  nginx -t"
         },
         {
           "name": "systemctl-stop-nginx",
-          "regex": "systemctl\\s+stop\\s+nginx(?:\\.service)?\\b",
+          "when": {
+            "command": [
+              "systemctl"
+            ],
+            "subcommand": [
+              "stop",
+              "nginx"
+            ]
+          },
           "reason": "systemctl stop nginx stops the nginx service and disrupts traffic.",
           "severity": "high",
           "explanation": "Stopping the nginx systemd service shuts down all nginx worker processes. Any sites, APIs, or reverse proxies served by this nginx instance become unreachable until the service is restarted.\n\nCheck status first:\n  systemctl status nginx\n\nTo restart instead of stop:\n  systemctl restart nginx"
         },
         {
           "name": "service-stop-nginx",
-          "regex": "service\\s+nginx\\s+stop\\b",
+          "when": {
+            "command": [
+              "service"
+            ],
+            "subcommand": [
+              "nginx",
+              "stop"
+            ]
+          },
           "reason": "service nginx stop stops the nginx service and disrupts traffic.",
           "severity": "high",
           "explanation": "Stopping nginx via the legacy service command terminates all worker processes. All sites and proxies served by nginx become unavailable.\n\nCheck status first:\n  service nginx status\n\nPrefer systemctl on systemd systems:\n  systemctl status nginx"
         },
         {
           "name": "nginx-config-delete",
-          "regex": "\\brm\\b.*\\s+/etc/nginx(?:/|\\b)",
+          "when": {
+            "command": [
+              "rm"
+            ],
+            "arg_contains": [
+              "/etc/nginx"
+            ]
+          },
           "reason": "Removing files from /etc/nginx deletes nginx configuration.",
           "severity": "critical",
           "explanation": "Deleting nginx configuration files removes site definitions, upstream blocks, SSL certificate references, and load balancing rules. Nginx will fail to start or reload without valid configuration.\n\nBack up config first:\n  cp -r /etc/nginx /etc/nginx.backup\n\nTest config validity:\n  nginx -t"
@@ -172,92 +220,132 @@
         "traefik",
         "ingressroute"
       ],
-      "safe_patterns": [
-        {
-          "name": "traefik-version",
-          "regex": "\\btraefik\\s+version\\b"
-        },
-        {
-          "name": "traefik-healthcheck",
-          "regex": "\\btraefik\\s+healthcheck\\b"
-        },
-        {
-          "name": "traefik-api-get",
-          "regex": "curl\\b.*\\s-X\\s*GET\\b.*\\btraefik\\b.*\\b/api/"
-        },
-        {
-          "name": "traefik-api-read",
-          "regex": "curl\\b.*\\btraefik\\b.*\\b/api/(?:overview|entrypoints|routers|services|middlewares|version|rawdata)"
-        },
-        {
-          "name": "docker-traefik-inspect",
-          "regex": "docker\\s+(?:inspect|logs)\\s+.*\\btraefik\\b"
-        },
-        {
-          "name": "kubectl-traefik-get",
-          "regex": "kubectl\\s+(?:get|describe)\\s+.*\\bingressroute"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "traefik-docker-stop",
-          "regex": "docker\\s+(?:stop|kill)\\s+.*\\btraefik\\b",
+          "when": {
+            "command": [
+              "docker"
+            ],
+            "subcommand": [
+              "?:stop",
+              "kill"
+            ]
+          },
           "reason": "Stopping the Traefik container halts all traffic routing.",
           "severity": "critical",
           "explanation": "Stopping or killing the Traefik container immediately halts all HTTP/HTTPS traffic routing. Every service behind this load balancer becomes unreachable until Traefik is restarted.\n\nCheck container status first:\n  docker inspect traefik\n\nView logs for issues:\n  docker logs traefik"
         },
         {
           "name": "traefik-docker-rm",
-          "regex": "docker\\s+rm\\s+.*\\btraefik\\b",
+          "when": {
+            "command": [
+              "docker"
+            ],
+            "subcommand": [
+              "rm"
+            ]
+          },
           "reason": "Removing the Traefik container destroys the load balancer.",
           "severity": "critical",
           "explanation": "Removing the Traefik container deletes it entirely, including any runtime state, Let's Encrypt certificates stored in the container, and dynamic configuration. The container must be recreated from scratch.\n\nStop without removing:\n  docker stop traefik\n\nBack up certificates first if stored in container volume."
         },
         {
           "name": "traefik-compose-down",
-          "regex": "docker[\\s-]compose\\s+.*\\bdown\\b.*\\btraefik\\b",
+          "when": {
+            "command": [
+              "docker-compose"
+            ],
+            "subcommand": [
+              "down"
+            ]
+          },
           "reason": "docker-compose down on Traefik stops and removes the load balancer.",
           "severity": "critical",
           "explanation": "Running docker-compose down stops and removes Traefik containers, networks, and optionally volumes. All traffic routing stops and any non-persisted state is lost.\n\nTo stop without removing:\n  docker-compose stop traefik\n\nTo restart cleanly:\n  docker-compose restart traefik"
         },
         {
           "name": "traefik-kubectl-delete-pod",
-          "regex": "kubectl\\s+delete\\s+(?:pod|deployment|daemonset)\\s+.*\\btraefik\\b",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete"
+            ]
+          },
           "reason": "Deleting Traefik pods/deployments disrupts traffic routing.",
           "severity": "critical",
           "explanation": "Deleting Traefik pods or deployments removes the load balancer from the cluster. If managed by a Deployment, pods will be recreated but with downtime. Deleting the Deployment itself stops all traffic routing until it is redeployed.\n\nCheck pod status:\n  kubectl get pods -l app=traefik\n\nRestart pods without deleting:\n  kubectl rollout restart deployment traefik"
         },
         {
           "name": "traefik-kubectl-delete-ingressroute",
-          "regex": "kubectl\\s+delete\\s+ingressroute\\b",
+          "when": {
+            "command": [
+              "kubectl"
+            ],
+            "subcommand": [
+              "delete",
+              "ingressroute"
+            ]
+          },
           "reason": "Deleting IngressRoute CRDs removes Traefik routing rules.",
           "severity": "high",
           "explanation": "IngressRoute custom resources define how Traefik routes traffic to backend services. Deleting them removes those routing rules, making the associated services unreachable through the load balancer.\n\nList current routes first:\n  kubectl get ingressroute\n\nDescribe a route before deleting:\n  kubectl describe ingressroute <name>"
         },
         {
           "name": "traefik-config-delete",
-          "regex": "\\brm\\b.*\\btraefik\\b.*\\.(?:ya?ml|toml)\\b",
+          "when": {
+            "command": [
+              "rm"
+            ]
+          },
           "reason": "Removing Traefik config files disrupts load balancer configuration.",
           "severity": "critical",
           "explanation": "Deleting Traefik configuration files removes entrypoint definitions, middleware chains, TLS settings, and provider configurations. Traefik will fail to start or lose routing rules on the next reload.\n\nBack up config first:\n  cp traefik.yml traefik.yml.backup\n\nValidate config before changes:\n  traefik healthcheck"
         },
         {
           "name": "traefik-api-delete",
-          "regex": "curl\\b.*\\s-X\\s*DELETE\\b.*\\btraefik\\b.*\\b/api/",
+          "when": {
+            "command": [
+              "curl"
+            ],
+            "arg_contains": [
+              "-X",
+              "DELETE",
+              "api"
+            ]
+          },
           "reason": "DELETE operations against Traefik API can remove routing configuration.",
           "severity": "high",
           "explanation": "Sending DELETE requests to the Traefik API removes routers, services, or middleware from the running configuration. Depending on the provider, these changes may be permanent or reverted on restart.\n\nUse GET to inspect before deleting:\n  curl -X GET http://traefik:8080/api/overview"
         },
         {
           "name": "traefik-systemctl-stop",
-          "regex": "systemctl\\s+stop\\s+traefik(?:\\.service)?\\b",
+          "when": {
+            "command": [
+              "systemctl"
+            ],
+            "subcommand": [
+              "stop",
+              "traefik"
+            ]
+          },
           "reason": "systemctl stop traefik stops the Traefik service.",
           "severity": "high",
           "explanation": "Stopping the Traefik systemd service shuts down the load balancer process. All HTTP/HTTPS traffic routing ceases until the service is restarted.\n\nCheck status first:\n  systemctl status traefik\n\nTo restart instead:\n  systemctl restart traefik"
         },
         {
           "name": "traefik-service-stop",
-          "regex": "service\\s+traefik\\s+stop\\b",
+          "when": {
+            "command": [
+              "service"
+            ],
+            "subcommand": [
+              "traefik",
+              "stop"
+            ]
+          },
           "reason": "service traefik stop stops the Traefik service.",
           "severity": "high",
           "explanation": "Stopping Traefik via the legacy service command terminates the load balancer. All traffic routing stops until the service is manually restarted.\n\nCheck status first:\n  service traefik status\n\nPrefer systemctl on systemd systems:\n  systemctl status traefik"
@@ -277,64 +365,102 @@
         "delete-rule",
         "deregister-instances-from-load-balancer"
       ],
-      "safe_patterns": [
-        {
-          "name": "elbv2-describe-load-balancers",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+describe-load-balancers\\b"
-        },
-        {
-          "name": "elbv2-describe-target-groups",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+describe-target-groups\\b"
-        },
-        {
-          "name": "elbv2-describe-target-health",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+describe-target-health\\b"
-        },
-        {
-          "name": "elb-describe-load-balancers",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elb\\s+describe-load-balancers\\b"
-        }
-      ],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "elbv2-delete-load-balancer",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+delete-load-balancer\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "elbv2",
+              "delete-load-balancer"
+            ]
+          },
           "reason": "aws elbv2 delete-load-balancer permanently deletes the load balancer.",
           "severity": "high"
         },
         {
           "name": "elbv2-delete-target-group",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+delete-target-group\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "elbv2",
+              "delete-target-group"
+            ]
+          },
           "reason": "aws elbv2 delete-target-group permanently deletes the target group.",
           "severity": "high"
         },
         {
           "name": "elbv2-deregister-targets",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+deregister-targets\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "elbv2",
+              "deregister-targets"
+            ]
+          },
           "reason": "aws elbv2 deregister-targets removes targets from the load balancer, impacting live traffic.",
           "severity": "high"
         },
         {
           "name": "elbv2-delete-listener",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+delete-listener\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "elbv2",
+              "delete-listener"
+            ]
+          },
           "reason": "aws elbv2 delete-listener deletes a listener, potentially breaking traffic routing.",
           "severity": "high"
         },
         {
           "name": "elbv2-delete-rule",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elbv2\\s+delete-rule\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "elbv2",
+              "delete-rule"
+            ]
+          },
           "reason": "aws elbv2 delete-rule deletes a listener rule, potentially breaking routing.",
           "severity": "high"
         },
         {
           "name": "elb-delete-load-balancer",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elb\\s+delete-load-balancer\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "elb",
+              "delete-load-balancer"
+            ]
+          },
           "reason": "aws elb delete-load-balancer permanently deletes the classic load balancer.",
           "severity": "high"
         },
         {
           "name": "elb-deregister-instances",
-          "regex": "\\baws\\b(?:\\s+(?:--profile|--region|--output|--endpoint-url)\\s+\\S+|\\s+--\\S+)*\\s+elb\\s+deregister-instances-from-load-balancer\\b",
+          "when": {
+            "command": [
+              "aws"
+            ],
+            "subcommand": [
+              "elb",
+              "deregister-instances-from-load-balancer"
+            ]
+          },
           "reason": "aws elb deregister-instances-from-load-balancer removes instances from the load balancer, impacting live traffic.",
           "severity": "high"
         }

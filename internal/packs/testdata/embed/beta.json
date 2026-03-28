@@ -6,11 +6,13 @@
       "name": "Beta One",
       "description": "embedded beta pack",
       "keywords": ["beta"],
-      "safe_patterns": [],
-      "destructive_patterns": [
+      "structural_patterns": [
         {
           "name": "beta-block",
-          "regex": "^beta dangerous$",
+          "when": {
+            "command": ["beta"],
+            "arg_exact": ["dangerous"]
+          },
           "reason": "beta block",
           "severity": "medium"
         }
