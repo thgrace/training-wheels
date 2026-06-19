@@ -3,7 +3,7 @@ module github.com/thgrace/training-wheels
 go 1.26.0
 
 require (
-	github.com/dlclark/regexp2 v1.11.5
+	github.com/dlclark/regexp2 v1.12.0
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20250424160509-463d218d4745
 	github.com/spf13/cobra v1.10.2
 )
